@@ -8,7 +8,6 @@ import com.example.model.ProfilePrompt
 import com.example.model.PromptCatalog
 import com.example.model.ReportItem
 import com.example.model.UserProfile
-import com.example.model.VerificationRequest
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.OtpType
@@ -51,7 +50,10 @@ class SignupPassRequiredException : IllegalStateException("A fresh location chec
 
 @Serializable
 private data class UserStatusRow(
-    @SerialName("country_ok") val countryOk: Boolean = false
+    @SerialName("country_ok") val countryOk: Boolean = false,
+    @SerialName("selfie_verified") val selfieVerified: Boolean = false,
+    @SerialName("phone_verified") val phoneVerified: Boolean = false,
+    @SerialName("is_admin") val isAdmin: Boolean = false
 )
 
 @Serializable
@@ -76,6 +78,13 @@ class MarryMatchRepository {
 
     private var _chat: ChatApi? = null
     val chat: ChatApi? get() = _chat
+
+    private var _verification: VerificationApi? = null
+    val verification: VerificationApi? get() = _verification
+
+    // The user's own selfie check (none, pending, approved, rejected), shown on the profile.
+    private val _selfieStatus = MutableStateFlow(SelfieStatus(SelfieStatus.NONE))
+    val selfieStatus: StateFlow<SelfieStatus> = _selfieStatus.asStateFlow()
 
     private val _isConfigured = MutableStateFlow(AppConfig.isConfigured)
     val isConfigured: StateFlow<Boolean> = _isConfigured.asStateFlow()
@@ -112,9 +121,6 @@ class MarryMatchRepository {
 
     private val _blockedUserIds = MutableStateFlow<Set<String>>(emptySet())
     val blockedUserIds: StateFlow<Set<String>> = _blockedUserIds.asStateFlow()
-
-    private val _verificationQueue = MutableStateFlow(SampleDataProvider.getPendingVerifications())
-    val verificationQueue: StateFlow<List<VerificationRequest>> = _verificationQueue.asStateFlow()
 
     private val _reports = MutableStateFlow(SampleDataProvider.getInitialReports())
     val reports: StateFlow<List<ReportItem>> = _reports.asStateFlow()
@@ -177,6 +183,7 @@ class MarryMatchRepository {
                 _profileService = ProfileService(_supabase!!)
                 _discovery = SupabaseDiscoveryService(_supabase!!) { _currentUser.value.id }
                 _chat = SupabaseChatService(_supabase!!) { _currentUser.value.id }
+                _verification = SupabaseVerificationService(_supabase!!, _profileService!!) { _currentUser.value.id }
                 repositoryScope.launch {
                     checkInitialSession()
                 }
@@ -283,16 +290,20 @@ class MarryMatchRepository {
      */
     private suspend fun routeAfterLogin(client: SupabaseClient, userId: String) {
         val countryOk = try {
-            client.from("user_status")
-                .select(columns = Columns.list("country_ok")) { filter { eq("user_id", userId) } }
+            val status = client.from("user_status")
+                .select(columns = Columns.list("country_ok", "selfie_verified", "phone_verified", "is_admin")) {
+                    filter { eq("user_id", userId) }
+                }
                 .decodeSingleOrNull<UserStatusRow>()
-                ?.countryOk ?: false
+            if (status != null) applyStatus(status)
+            status?.countryOk ?: false
         } catch (e: Throwable) {
             // The server enforces country_ok on every write anyway, so a failed read must not lock the user out.
             Log.w("MarryMatchRepository", "Could not read user_status: ${e.message}")
             true
         }
         loadBlockedIds(client, userId)
+        refreshSelfieStatus()
         if (countryOk) {
             _isPostLoginLocationGate.value = false
             routeByProfile(userId)
@@ -300,6 +311,37 @@ class MarryMatchRepository {
             _isPostLoginLocationGate.value = true
             _authState.value = AuthState.LOCATION_GATE
         }
+    }
+
+    /** Badges and the admin flag come only from the server (user_status), never from the app. */
+    private fun applyStatus(status: UserStatusRow) {
+        _currentUser.value = _currentUser.value.copy(
+            selfieVerified = status.selfieVerified,
+            phoneVerified = status.phoneVerified,
+            isAdmin = status.isAdmin
+        )
+    }
+
+    /** Reloads the selfie check state and the blue tick, e.g. after submitting or on the profile screen. */
+    suspend fun loadSelfieStatus() {
+        val api = _verification ?: return
+        val client = _supabase ?: return
+        val userId = _currentUser.value.id.ifBlank { return }
+        try {
+            _selfieStatus.value = api.myStatus()
+            client.from("user_status")
+                .select(columns = Columns.list("country_ok", "selfie_verified", "phone_verified", "is_admin")) {
+                    filter { eq("user_id", userId) }
+                }
+                .decodeSingleOrNull<UserStatusRow>()
+                ?.let { applyStatus(it) }
+        } catch (e: Throwable) {
+            Log.w("MarryMatchRepository", "Could not load selfie status: ${e.message}")
+        }
+    }
+
+    fun refreshSelfieStatus() {
+        repositoryScope.launch { loadSelfieStatus() }
     }
 
     /** Starts the account fresh from the signed-in auth user (birth date comes from the sign-up data). */
@@ -472,6 +514,7 @@ class MarryMatchRepository {
         _matches.value = emptyList()
         _receivedLikesCount.value = 0
         _matchCelebration.value = null
+        _selfieStatus.value = SelfieStatus(SelfieStatus.NONE)
         _authState.value = AuthState.WELCOME
     }
 
@@ -629,44 +672,6 @@ class MarryMatchRepository {
         )
         _reports.value = listOf(report) + _reports.value
         return Result.success(Unit)
-    }
-
-    fun submitSelfieVerification(pose: String, photoUri: String? = null, autoApprove: Boolean = false) {
-        val request = VerificationRequest(
-            id = "ver_${UUID.randomUUID()}",
-            userId = _currentUser.value.id,
-            userName = _currentUser.value.displayName,
-            userAge = _currentUser.value.age,
-            userCity = _currentUser.value.city,
-            profilePhoto = _currentUser.value.photos.firstOrNull() ?: "",
-            pose = pose,
-            selfiePhotoUrl = photoUri ?: (_currentUser.value.photos.firstOrNull() ?: ""),
-            status = if (autoApprove) "approved" else "pending"
-        )
-        if (autoApprove) {
-            _currentUser.value = _currentUser.value.copy(selfieVerified = true)
-            _dailyProfiles.value = _dailyProfiles.value.map {
-                if (it.id == _currentUser.value.id) it.copy(selfieVerified = true) else it
-            }
-        }
-        _verificationQueue.value = listOf(request) + _verificationQueue.value
-    }
-
-    fun completeSelfieVerification(pose: String, photoUri: String? = null) {
-        submitSelfieVerification(pose = pose, photoUri = photoUri, autoApprove = true)
-    }
-
-    fun reviewSelfie(requestId: String, approve: Boolean, reason: String? = null) {
-        val req = _verificationQueue.value.find { it.id == requestId } ?: return
-        if (approve) {
-            if (req.userId == _currentUser.value.id) {
-                _currentUser.value = _currentUser.value.copy(selfieVerified = true)
-            }
-            _dailyProfiles.value = _dailyProfiles.value.map {
-                if (it.id == req.userId) it.copy(selfieVerified = true) else it
-            }
-        }
-        _verificationQueue.value = _verificationQueue.value.filter { it.id != requestId }
     }
 
     fun setVerifiedFilter(enabled: Boolean) {

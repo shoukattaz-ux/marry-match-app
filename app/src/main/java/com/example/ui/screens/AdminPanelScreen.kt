@@ -32,7 +32,16 @@ import coil.compose.AsyncImage
 import com.example.core.AppConfig
 import com.example.data.MarryMatchRepository
 import com.example.model.ReportItem
-import com.example.model.VerificationRequest
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.core.AppLanguage
+import com.example.core.Localization
+import com.example.data.SelfieReviewItem
+import com.example.data.SupabaseVerificationService
+import com.example.ui.viewmodel.SelfieQueueUiState
+import com.example.ui.viewmodel.SelfieQueueViewModel
 import com.example.ui.theme.extendedColors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,7 +52,10 @@ fun AdminPanelScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedSection by remember { mutableIntStateOf(0) } // 0: Dashboard, 1: Selfie Queue, 2: Reports, 3: Settings
-    val selfieQueue by repository.verificationQueue.collectAsState()
+    val lang by repository.appLanguage.collectAsState()
+    val queueVm: SelfieQueueViewModel = viewModel(key = "selfie_queue") { SelfieQueueViewModel(repository.verification) }
+    val queueState by queueVm.state.collectAsState()
+    val selfieQueue = queueState.items
     val reports by repository.reports.collectAsState()
     val profiles by repository.dailyProfiles.collectAsState()
 
@@ -102,18 +114,33 @@ fun AdminPanelScreen(
                 .padding(16.dp)
         ) {
             when (selectedSection) {
-                0 -> AdminDashboardView(selfieCount = selfieQueue.size, reportCount = reports.size, activeUsers = profiles.size + 1)
-                1 -> SelfieQueueView(queue = selfieQueue, onReview = { id, approve, reason -> repository.reviewSelfie(id, approve, reason) })
-                2 -> ReportsListView(reports = reports)
-                3 -> AdminSwitchesView()
+                0 -> AdminDashboardView(
+                    note = { SampleDataNote(lang) },selfieCount = selfieQueue.size, reportCount = reports.size, activeUsers = profiles.size + 1)
+                1 -> SelfieQueueView(
+                    state = queueState,
+                    lang = lang,
+                    onReload = queueVm::reload,
+                    onOpen = queueVm::open,
+                    onClose = queueVm::close,
+                    onDecide = queueVm::decide
+                )
+                2 -> {
+                    SampleDataNote(lang)
+                    ReportsListView(reports = reports)
+                }
+                3 -> {
+                    SampleDataNote(lang)
+                    AdminSwitchesView()
+                }
             }
         }
     }
 }
 
 @Composable
-fun AdminDashboardView(selfieCount: Int, reportCount: Int, activeUsers: Int) {
+fun AdminDashboardView(note: @Composable () -> Unit, selfieCount: Int, reportCount: Int, activeUsers: Int) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item { note() }
         item {
             Text("Community Health & Status (Germany)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
@@ -164,91 +191,163 @@ fun AdminStatCard(title: String, value: String, modifier: Modifier = Modifier, i
     }
 }
 
+/** Tabs that still show sample data until the rest of Phase 9 is built. */
+@Composable
+private fun SampleDataNote(lang: AppLanguage) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+    ) {
+        Text(
+            Localization.t("admin_sample_note", lang),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onTertiaryContainer,
+            modifier = Modifier.padding(10.dp)
+        )
+    }
+}
+
 @Composable
 fun SelfieQueueView(
-    queue: List<VerificationRequest>,
-    onReview: (String, Boolean, String?) -> Unit
+    state: SelfieQueueUiState,
+    lang: AppLanguage,
+    onReload: () -> Unit,
+    onOpen: (SelfieReviewItem) -> Unit,
+    onClose: () -> Unit,
+    onDecide: (Boolean, String?) -> Unit
 ) {
-    if (queue.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No pending selfie verifications in queue! All caught up.", color = MaterialTheme.extendedColors.muted)
+    val open = state.open
+    if (open != null) {
+        SelfieReviewDetail(item = open, selfieUrl = state.openSelfieUrl, state = state, lang = lang, onClose = onClose, onDecide = onDecide)
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                Localization.t("admin_selfie_queue", lang) + " (${state.items.size})",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            TextButton(onClick = onReload, enabled = !state.loading) { Text(Localization.t("admin_reload", lang)) }
         }
-    } else {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            item {
-                Text("Pending Selfie Submissions (${queue.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        state.errorKey?.let { Text(Localization.t(it, lang), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        when {
+            state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(Localization.t("admin_queue_empty", lang), color = MaterialTheme.extendedColors.muted)
             }
-            items(queue) { req ->
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text("${req.userName}, ${req.userAge}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                Text("${req.userCity} • Submitted ${req.createdAt}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer
-                            ) {
-                                Text("Required Pose: ${req.pose}", modifier = Modifier.padding(6.dp), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-
-                        // Side by Side comparison (Profile Photo vs Live Pose Selfie)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Profile Photo", style = MaterialTheme.typography.labelSmall)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Box(modifier = Modifier.size(120.dp).clip(RoundedCornerShape(8.dp))) {
-                                    AsyncImage(model = req.profilePhoto, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                }
-                            }
-                            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Live Pose Check", style = MaterialTheme.typography.labelSmall)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Box(modifier = Modifier.size(120.dp).clip(RoundedCornerShape(8.dp))) {
-                                    AsyncImage(model = req.selfiePhotoUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                }
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = { onReview(req.id, true, null) },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.extendedColors.verified),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Approve")
-                            }
-
-                            OutlinedButton(
-                                onClick = { onReview(req.id, false, "Pose does not match") },
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Reject")
-                            }
+            // The list shows no selfies; one is only loaded when the moderator opens the request.
+            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(state.items, key = { it.requestId }) { item ->
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.fillMaxWidth().clickable { onOpen(item) }
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text("${item.displayName}, ${item.age}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                listOf(item.city, item.submittedAt.take(16).replace('T', ' ')).filter { it.isNotBlank() }.joinToString(" • "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.extendedColors.muted
+                            )
+                            Text(poseText(item.pose, lang), style = MaterialTheme.typography.bodySmall)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelfieReviewDetail(
+    item: SelfieReviewItem,
+    selfieUrl: String?,
+    state: SelfieQueueUiState,
+    lang: AppLanguage,
+    onClose: () -> Unit,
+    onDecide: (Boolean, String?) -> Unit
+) {
+    var rejecting by remember(item.requestId) { mutableStateOf(false) }
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = Localization.t("close", lang)) }
+            Text("${item.displayName}, ${item.age}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+        Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                Localization.t("admin_required_pose", lang) + " " + poseText(item.pose, lang),
+                modifier = Modifier.padding(10.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        Text(Localization.t("admin_live_selfie", lang), style = MaterialTheme.typography.labelLarge)
+        Box(
+            modifier = Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            if (selfieUrl == null) {
+                CircularProgressIndicator()
+            } else {
+                AsyncImage(model = selfieUrl, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+            }
+        }
+        Text(Localization.t("admin_profile_photos", lang), style = MaterialTheme.typography.labelLarge)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(item.profilePhotoUrls) { url ->
+                AsyncImage(
+                    model = url,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(120.dp, 160.dp).clip(RoundedCornerShape(8.dp))
+                )
+            }
+        }
+        state.errorKey?.let { Text(Localization.t(it, lang), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        if (state.deciding) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else if (rejecting) {
+            Text(Localization.t("admin_reject_reason", lang), style = MaterialTheme.typography.labelLarge)
+            SupabaseVerificationService.REJECT_REASONS.forEach { reason ->
+                OutlinedButton(
+                    onClick = { onDecide(false, reason) },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(Localization.t("selfie_reason_$reason", lang)) }
+            }
+            TextButton(onClick = { rejecting = false }) { Text(Localization.t("cancel", lang)) }
+        } else {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { onDecide(true, null) },
+                    enabled = selfieUrl != null,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.extendedColors.verified),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(Localization.t("admin_approve", lang))
+                }
+                OutlinedButton(
+                    onClick = { rejecting = true },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(Localization.t("admin_reject", lang))
                 }
             }
         }

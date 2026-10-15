@@ -54,6 +54,8 @@ object AppConfig {
     const val LOCATION_NOTICE_VERSION = "1.0"
     // Consent for optional sensitive profile data (religion), GDPR Art. 9
     const val SENSITIVE_PROFILE_VERSION = "1.0"
+    // Consent for the biometric selfie check, GDPR Art. 9
+    const val SELFIE_CONSENT_VERSION = "1.0"
 
     val isConfigured: Boolean
         get() = SUPABASE_URL.startsWith("https://") &&

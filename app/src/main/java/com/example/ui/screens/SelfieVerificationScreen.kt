@@ -2,26 +2,23 @@ package com.example.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.net.Uri
+import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Verified
@@ -31,30 +28,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import coil.compose.AsyncImage
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.core.AppLanguage
 import com.example.core.Localization
+import com.example.core.PhotoProcessor
 import com.example.data.MarryMatchRepository
 import com.example.ui.components.MarryPrimaryButton
 import com.example.ui.components.SelfieCameraPreview
 import com.example.ui.theme.extendedColors
-import kotlinx.coroutines.delay
+import com.example.ui.viewmodel.SelfieStep
+import com.example.ui.viewmodel.SelfieUiState
+import com.example.ui.viewmodel.SelfieViewModel
+import kotlinx.coroutines.launch
+import java.io.File
 
-enum class SelfieCaptureState {
-    PERMISSION_AND_POSE,
-    CAMERA_STREAM,
-    REVIEW_CAPTURED_PHOTO,
-    VERIFYING,
-    VERIFIED_SUCCESS
-}
+/** Text for a pose key chosen by the server. */
+fun poseText(pose: String?, lang: AppLanguage): String =
+    if (pose == null) "" else Localization.t("pose_$pose", lang)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,99 +63,44 @@ fun SelfieVerificationScreen(
 ) {
     val lang by repository.appLanguage.collectAsState()
     val context = LocalContext.current
-
-    val randomPoses = remember {
-        listOf(
-            "Touch your nose with one finger",
-            "Show a peace sign next to your cheek",
-            "Thumbs up and tilt your head to the left"
-        )
+    val scope = rememberCoroutineScope()
+    val vm: SelfieViewModel = viewModel(key = "selfie_check") { SelfieViewModel(repository.verification) }
+    val state by vm.state.collectAsState()
+    var cameraAllowed by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
-    val requiredPose = remember { randomPoses.random() }
+    var preparing by remember { mutableStateOf(false) }
 
-    var captureState by remember { mutableStateOf(SelfieCaptureState.PERMISSION_AND_POSE) }
-    var capturedPhotoUri by remember { mutableStateOf<Uri?>(null) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    // Android Photo Picker launcher (zero-permission media picker)
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            capturedPhotoUri = uri
-            captureState = SelfieCaptureState.REVIEW_CAPTURED_PHOTO
-        }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        cameraAllowed = granted
+        if (!granted) vm.onCameraFailed()
     }
 
-    // Camera runtime permission launcher
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            captureState = SelfieCaptureState.CAMERA_STREAM
-        } else {
-            errorMessage = if (lang == AppLanguage.EN)
-                "Camera permission is required to take a live selfie. You can also upload a photo below."
-            else
-                "Kamerazugriff erforderlich für Live-Selfie. Alternativ können Sie ein Foto hochladen."
-        }
+    // Keep the profile badge and status card up to date after leaving this screen.
+    fun close() {
+        repository.refreshSelfieStatus()
+        onClose()
     }
 
-    fun startCamera() {
-        val hasCamera = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
-        if (hasCamera) {
-            captureState = SelfieCaptureState.CAMERA_STREAM
-        } else {
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        }
-    }
-
+    val onCamera = state.step == SelfieStep.CAMERA
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Verified,
-                            contentDescription = null,
-                            tint = MaterialTheme.extendedColors.verified
-                        )
-                        Text(
-                            text = Localization.t("selfie_verification", lang),
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Verified, contentDescription = null, tint = MaterialTheme.extendedColors.verified)
+                        Text(Localization.t("selfie_verification", lang), style = MaterialTheme.typography.titleMedium)
                     }
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = onClose,
-                        modifier = Modifier.testTag("close_selfie_screen_btn")
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    IconButton(onClick = { close() }, modifier = Modifier.testTag("close_selfie_screen_btn")) {
+                        Icon(Icons.Default.Close, contentDescription = Localization.t("close", lang))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (captureState == SelfieCaptureState.CAMERA_STREAM) {
-                        Color.Black.copy(alpha = 0.85f)
-                    } else {
-                        MaterialTheme.colorScheme.surface
-                    },
-                    titleContentColor = if (captureState == SelfieCaptureState.CAMERA_STREAM) {
-                        Color.White
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    navigationIconContentColor = if (captureState == SelfieCaptureState.CAMERA_STREAM) {
-                        Color.White
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    }
+                    containerColor = if (onCamera) Color.Black.copy(alpha = 0.85f) else MaterialTheme.colorScheme.surface,
+                    titleContentColor = if (onCamera) Color.White else MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = if (onCamera) Color.White else MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -166,516 +109,294 @@ fun SelfieVerificationScreen(
             modifier = modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(
-                    if (captureState == SelfieCaptureState.CAMERA_STREAM) {
-                        Color.Black
-                    } else {
-                        MaterialTheme.colorScheme.background
+                .background(if (onCamera) Color.Black else MaterialTheme.colorScheme.background)
+        ) {
+            when (state.step) {
+                SelfieStep.LOADING, SelfieStep.UPLOADING -> CenteredProgress(
+                    if (state.step == SelfieStep.UPLOADING) Localization.t("selfie_uploading", lang) else null
+                )
+
+                SelfieStep.INTRO -> IntroStep(
+                    state = state,
+                    lang = lang,
+                    onConsent = vm::setConsent,
+                    onStart = {
+                        if (!cameraAllowed) permissionLauncher.launch(Manifest.permission.CAMERA)
+                        vm.start()
                     }
                 )
-        ) {
-            when (captureState) {
-                SelfieCaptureState.PERMISSION_AND_POSE -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(18.dp)
-                    ) {
-                        // Badge Icon
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.extendedColors.verified.copy(alpha = 0.15f),
-                            modifier = Modifier.size(80.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Verified,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.extendedColors.verified,
-                                    modifier = Modifier.size(44.dp)
-                                )
-                            }
-                        }
 
-                        Text(
-                            text = if (lang == AppLanguage.EN)
-                                "Get Verified on MarryMatch"
-                            else
-                                "Werden Sie verifiziert auf MarryMatch",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Text(
-                            text = if (lang == AppLanguage.EN)
-                                "Our community prioritizes authentic, marriage-minded individuals. Fulfill the verified requirement with a quick selfie holding the required pose."
-                            else
-                                "Unsere Gemeinschaft setzt auf echte, heiratsorientierte Mitglieder. Erfüllen Sie die Verifizierungsanforderung mit einem schnellen Selfie.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.extendedColors.muted,
-                            textAlign = TextAlign.Center
-                        )
-
-                        // Required Challenge Pose Card
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = Localization.t("selfie_pose_instruction", lang),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                                Text(
-                                    text = "\"$requiredPose\"",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    ),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-
-                        // GDPR Biometric Privacy Guarantee Card
-                        Card(
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Security,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        text = if (lang == AppLanguage.EN)
-                                            "GDPR Biometric Privacy Guarantee"
-                                        else
-                                            "DSGVO-Datenschutzgarantie",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                SelfieStep.CAMERA -> {
+                    if (cameraAllowed) {
+                        SelfieCameraPreview(
+                            poseLabel = Localization.t("selfie_pose_instruction", lang),
+                            poseText = poseText(state.pose, lang),
+                            onPhotoCaptured = { uri ->
+                                preparing = true
+                                scope.launch {
+                                    try {
+                                        vm.onPhotoTaken(PhotoProcessor.prepare(context, uri))
+                                    } catch (e: Throwable) {
+                                        vm.onCameraFailed()
+                                    } finally {
+                                        // The raw capture is not kept on the phone.
+                                        uri.path?.let { File(it).delete() }
+                                        preparing = false
+                                    }
                                 }
-                                Text(
-                                    text = Localization.t("selfie_consent", lang),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        if (errorMessage != null) {
-                            Text(
-                                text = errorMessage!!,
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Primary Action: Open CameraX
-                        MarryPrimaryButton(
-                            text = if (lang == AppLanguage.EN) "Open Camera & Take Pose" else "Kamera öffnen & Pose aufnehmen",
-                            onClick = { startCamera() },
-                            testTag = "open_camerax_btn"
+                            },
+                            onCaptureFailed = vm::onCameraFailed
                         )
-
-                        // Upload Selfie via Photo Picker
-                        OutlinedButton(
-                            onClick = {
-                                photoPickerLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                                .testTag("upload_verification_selfie_btn"),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PhotoLibrary,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                if (lang == AppLanguage.EN) "Upload Verification Selfie" else "Verifizierungs-Selfie hochladen",
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        // Fallback snapshot trigger for headless/emulator environments
-                        TextButton(
-                            onClick = {
-                                capturedPhotoUri = Uri.parse(
-                                    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=80"
-                                )
-                                captureState = SelfieCaptureState.REVIEW_CAPTURED_PHOTO
-                            },
-                            modifier = Modifier.testTag("simulate_selfie_btn")
-                        ) {
-                            Text(
-                                text = if (lang == AppLanguage.EN) "Simulate Pose Selfie (Test Mode)" else "Test-Selfie simulieren",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.extendedColors.muted
-                            )
-                        }
+                    } else {
+                        CameraPermissionNeeded(lang) { permissionLauncher.launch(Manifest.permission.CAMERA) }
                     }
-                }
-
-                SelfieCaptureState.CAMERA_STREAM -> {
-                    SelfieCameraPreview(
-                        requiredPose = requiredPose,
-                        lang = lang,
-                        onPhotoCaptured = { uri ->
-                            capturedPhotoUri = uri
-                            captureState = SelfieCaptureState.REVIEW_CAPTURED_PHOTO
-                        },
-                        onUploadRequested = {
-                            photoPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        }
-                    )
-                }
-
-                SelfieCaptureState.REVIEW_CAPTURED_PHOTO -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Text(
-                            text = if (lang == AppLanguage.EN)
-                                "Review Verification Selfie"
-                            else
-                                "Verifizierungs-Selfie überprüfen",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-
+                    if (preparing) CenteredProgress(null)
+                    state.errorKey?.let { key ->
                         Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
                             shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(24.dp)
+                                .clickable { vm.clearError() }
                         ) {
                             Text(
-                                text = if (lang == AppLanguage.EN)
-                                    "Required Pose: \"$requiredPose\""
-                                else
-                                    "Geforderte Pose: \"$requiredPose\"",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                ),
+                                text = Localization.t(key, lang),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
                                 textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(10.dp)
+                                modifier = Modifier.padding(16.dp)
                             )
                         }
-
-                        // Image Preview Frame
-                        Box(
-                            modifier = Modifier
-                                .size(260.dp, 330.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .border(
-                                    3.dp,
-                                    MaterialTheme.extendedColors.verified,
-                                    RoundedCornerShape(16.dp)
-                                )
-                        ) {
-                            AsyncImage(
-                                model = capturedPhotoUri,
-                                contentDescription = "Captured selfie",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-
-                        Text(
-                            text = if (lang == AppLanguage.EN)
-                                "Ensure your face and pose are clearly visible. Your biometric selfie is strictly used for verification and will not be displayed publicly."
-                            else
-                                "Stellen Sie sicher, dass Gesicht und Pose gut erkennbar sind. Ihr Selfie wird ausschließlich zur Prüfung verwendet und nicht öffentlich angezeigt.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.extendedColors.muted,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    capturedPhotoUri = null
-                                    captureState = SelfieCaptureState.PERMISSION_AND_POSE
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp)
-                                    .testTag("retake_selfie_btn")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(if (lang == AppLanguage.EN) "Retake" else "Wiederholen")
-                            }
-
-                            Button(
-                                onClick = {
-                                    captureState = SelfieCaptureState.VERIFYING
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.extendedColors.verified
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp)
-                                    .testTag("confirm_submit_selfie_btn")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    Localization.t("submit_verification", lang),
-                                    color = Color.White
-                                )
-                            }
-                        }
                     }
                 }
 
-                SelfieCaptureState.VERIFYING -> {
-                    // Biometric verification processing simulation
-                    var progressStep by remember { mutableIntStateOf(0) }
+                SelfieStep.REVIEW -> ReviewStep(state, lang, onRetake = vm::retake, onSubmit = vm::submit)
 
-                    LaunchedEffect(Unit) {
-                        delay(600)
-                        progressStep = 1
-                        delay(600)
-                        progressStep = 2
-                        delay(600)
-                        // Fulfill verification in repository
-                        repository.completeSelfieVerification(
-                            pose = requiredPose,
-                            photoUri = capturedPhotoUri?.toString()
-                        )
-                        captureState = SelfieCaptureState.VERIFIED_SUCCESS
-                    }
+                SelfieStep.PENDING -> ResultStep(
+                    icon = { Icon(Icons.Default.HourglassTop, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(52.dp)) },
+                    title = Localization.t("selfie_pending_title", lang),
+                    body = Localization.t("selfie_pending_body", lang),
+                    button = Localization.t("selfie_back_to_profile", lang),
+                    onDone = { close() }
+                )
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(28.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = MaterialTheme.extendedColors.verified,
-                            strokeWidth = 4.dp,
-                            modifier = Modifier.size(64.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        Text(
-                            text = if (lang == AppLanguage.EN)
-                                "Verifying Biometric Selfie..."
-                            else
-                                "Biometrisches Selfie wird geprüft...",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                VerificationCheckStep(
-                                    label = if (lang == AppLanguage.EN) "Face geometry and lighting check" else "Gesichtsgeometrie und Beleuchtungsprüfung",
-                                    isDone = progressStep >= 1
-                                )
-                                VerificationCheckStep(
-                                    label = if (lang == AppLanguage.EN) "Pose challenge: \"$requiredPose\"" else "Posen-Abgleich: \"$requiredPose\"",
-                                    isDone = progressStep >= 2
-                                )
-                                VerificationCheckStep(
-                                    label = if (lang == AppLanguage.EN) "Liveness & anti-spoofing confirmation" else "Lebendigkeitsprüfung & Manipulationsschutz",
-                                    isDone = progressStep >= 2
-                                )
-                            }
-                        }
-                    }
-                }
-
-                SelfieCaptureState.VERIFIED_SUCCESS -> {
-                    // Success View: Fulfills the app's 'verified' requirement!
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.extendedColors.verified.copy(alpha = 0.15f),
-                            modifier = Modifier.size(96.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.extendedColors.verified,
-                                    modifier = Modifier.size(56.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        Text(
-                            text = if (lang == AppLanguage.EN)
-                                "You are Verified!"
-                            else
-                                "Sie sind verifiziert!",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = if (lang == AppLanguage.EN)
-                                "Your selfie verified requirement has been fulfilled! The official Blue Tick is now active on your MarryMatch profile."
-                            else
-                                "Ihre Verifizierungsanforderung wurde erfolgreich erfüllt! Das offizielle blaue Häkchen ist nun aktiv.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.extendedColors.muted,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        Card(
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AutoAwesome,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.secondary
-                                    )
-                                    Text(
-                                        text = if (lang == AppLanguage.EN) "Unlocked Benefits:" else "Freigeschaltete Vorteile:",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Text(
-                                    text = if (lang == AppLanguage.EN)
-                                        "• Blue Tick badge on Discover, Likes, and Profile\n• 3x boosted visibility in German daily curation\n• Eligible to match with members using 'Verified Only'"
-                                    else
-                                        "• Blaues Häkchen bei Entdecken, Likes und Profil\n• 3x höhere Sichtbarkeit bei täglichen Vorschlägen\n• Freischaltung für 'Nur Verifizierte'-Filter",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(28.dp))
-
-                        MarryPrimaryButton(
-                            text = if (lang == AppLanguage.EN) "Return to Profile" else "Zurück zum Profil",
-                            onClick = onClose,
-                            testTag = "verified_done_btn"
-                        )
-                    }
-                }
+                SelfieStep.VERIFIED -> ResultStep(
+                    icon = { Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.extendedColors.verified, modifier = Modifier.size(56.dp)) },
+                    title = Localization.t("selfie_verified_title", lang),
+                    body = Localization.t("selfie_verified_body", lang),
+                    button = Localization.t("selfie_back_to_profile", lang),
+                    onDone = { close() }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun VerificationCheckStep(
-    label: String,
-    isDone: Boolean
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+private fun CenteredProgress(text: String?) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        if (isDone) {
-            Icon(
-                imageVector = Icons.Default.CheckCircle,
-                contentDescription = null,
-                tint = MaterialTheme.extendedColors.verified,
-                modifier = Modifier.size(18.dp)
+        CircularProgressIndicator(color = MaterialTheme.extendedColors.verified)
+        if (text != null) {
+            Spacer(Modifier.height(16.dp))
+            Text(text, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun IntroStep(
+    state: SelfieUiState,
+    lang: AppLanguage,
+    onConsent: (Boolean) -> Unit,
+    onStart: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Surface(shape = CircleShape, color = MaterialTheme.extendedColors.verified.copy(alpha = 0.15f), modifier = Modifier.size(80.dp)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Verified, null, tint = MaterialTheme.extendedColors.verified, modifier = Modifier.size(44.dp))
+            }
+        }
+        Text(
+            Localization.t("selfie_intro_title", lang),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            Localization.t("selfie_intro_body", lang),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.extendedColors.muted,
+            textAlign = TextAlign.Center
+        )
+
+        state.lastRejectReason?.let { reason ->
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = Localization.t("selfie_last_rejected", lang) + " " + Localization.t("selfie_reason_$reason", lang),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(14.dp)
+                )
+            }
+        }
+
+        // What happens with the selfie (GDPR Art. 9: explicit consent for biometric data)
+        Card(
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.primary)
+                    Text(Localization.t("selfie_privacy_title", lang), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    Localization.t("selfie_consent", lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onConsent(!state.consentChecked) }
+                .testTag("selfie_consent_checkbox")
+        ) {
+            Checkbox(checked = state.consentChecked, onCheckedChange = onConsent)
+            Text(Localization.t("selfie_consent_checkbox", lang), style = MaterialTheme.typography.bodySmall)
+        }
+
+        state.errorKey?.let {
+            Text(
+                Localization.t(it, lang),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center
             )
+        }
+
+        if (state.busy) {
+            CircularProgressIndicator()
         } else {
-            CircularProgressIndicator(
-                strokeWidth = 2.dp,
-                modifier = Modifier.size(18.dp)
+            MarryPrimaryButton(
+                text = Localization.t("selfie_open_camera", lang),
+                onClick = onStart,
+                enabled = state.consentChecked,
+                testTag = "open_camerax_btn"
             )
         }
         Text(
-            text = label,
+            Localization.t("selfie_attempts_hint", lang),
             style = MaterialTheme.typography.bodySmall,
-            fontWeight = if (isDone) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (isDone) MaterialTheme.colorScheme.onSurface else MaterialTheme.extendedColors.muted
+            color = MaterialTheme.extendedColors.muted,
+            textAlign = TextAlign.Center
         )
+    }
+}
+
+@Composable
+private fun CameraPermissionNeeded(lang: AppLanguage, onAsk: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            Localization.t("selfie_camera_permission", lang),
+            color = Color.White,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = onAsk) { Text(Localization.t("selfie_allow_camera", lang)) }
+    }
+}
+
+@Composable
+private fun ReviewStep(state: SelfieUiState, lang: AppLanguage, onRetake: () -> Unit, onSubmit: () -> Unit) {
+    val image = remember(state.photo) {
+        state.photo?.jpeg?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
+    }
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(Localization.t("selfie_review_title", lang), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = Localization.t("selfie_pose_instruction", lang) + "\n" + poseText(state.pose, lang),
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(10.dp)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(260.dp, 330.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .border(3.dp, MaterialTheme.extendedColors.verified, RoundedCornerShape(16.dp))
+        ) {
+            if (image != null) {
+                Image(bitmap = image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+        }
+        Text(
+            Localization.t("selfie_review_hint", lang),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.extendedColors.muted,
+            textAlign = TextAlign.Center
+        )
+        state.errorKey?.let {
+            Text(Localization.t(it, lang), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = onRetake, enabled = !state.busy, modifier = Modifier.weight(1f).height(48.dp).testTag("retake_selfie_btn")) {
+                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(Localization.t("selfie_retake", lang))
+            }
+            Button(
+                onClick = onSubmit,
+                enabled = !state.busy,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.extendedColors.verified),
+                modifier = Modifier.weight(1f).height(48.dp).testTag("confirm_submit_selfie_btn")
+            ) {
+                Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(Localization.t("submit_verification", lang), color = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultStep(icon: @Composable () -> Unit, title: String, body: String, button: String, onDone: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(96.dp)) {
+            Box(contentAlignment = Alignment.Center) { icon() }
+        }
+        Spacer(Modifier.height(20.dp))
+        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(8.dp))
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.extendedColors.muted, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(28.dp))
+        MarryPrimaryButton(text = button, onClick = onDone, testTag = "selfie_done_btn")
     }
 }

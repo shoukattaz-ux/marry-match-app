@@ -38,6 +38,7 @@ import com.example.core.AppConfig
 import com.example.core.AppLanguage
 import com.example.core.Localization
 import com.example.data.MarryMatchRepository
+import com.example.data.SelfieStatus
 import com.example.ui.components.*
 import com.example.ui.theme.extendedColors
 
@@ -53,6 +54,9 @@ fun ProfileScreen(
 ) {
     val lang by repository.appLanguage.collectAsState()
     val user by repository.currentUser.collectAsState()
+    val selfieStatus by repository.selfieStatus.collectAsState()
+
+    LaunchedEffect(user.id) { if (user.id.isNotBlank()) repository.loadSelfieStatus() }
 
     var showPhoneFlow by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
@@ -175,20 +179,30 @@ fun ProfileScreen(
                                 fontWeight = FontWeight.Bold
                             )
                         }
+                        val pending = selfieStatus.state == SelfieStatus.PENDING
+                        val rejected = selfieStatus.state == SelfieStatus.REJECTED
                         Text(
-                            text = if (lang == AppLanguage.EN)
-                                "Earn the official Blue Tick badge. Verified profiles receive 3x more visibility and access to the verified-only filter."
-                            else
-                                "Erhalten Sie das offizielle blaue Häkchen. Verifizierte Profile erhalten dreifache Sichtbarkeit und Zugang zum Nur-Verifiziert-Filter.",
+                            text = when {
+                                pending -> Localization.t("verification_pending", lang)
+                                rejected -> Localization.t("selfie_last_rejected", lang) + " " +
+                                    Localization.t("selfie_reason_${selfieStatus.rejectReason ?: "other"}", lang)
+                                else -> Localization.t("selfie_card_body", lang)
+                            },
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (rejected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Button(
-                            onClick = onOpenSelfieVerification,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.extendedColors.verified),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text(Localization.t("get_verified", lang), color = Color.White)
+                        if (!pending) {
+                            Button(
+                                onClick = onOpenSelfieVerification,
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.extendedColors.verified),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.testTag("get_verified_btn")
+                            ) {
+                                Text(
+                                    Localization.t(if (rejected) "selfie_try_again" else "get_verified", lang),
+                                    color = Color.White
+                                )
+                            }
                         }
                     }
                 }
@@ -208,8 +222,7 @@ fun ProfileScreen(
                         Column {
                             Text(Localization.t("verification_approved", lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(
-                                if (lang == AppLanguage.EN) "Your photo and identity are verified by human moderation."
-                                else "Ihre Identität wurde erfolgreich durch Moderation verifiziert.",
+                                Localization.t("selfie_verified_card", lang),
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
