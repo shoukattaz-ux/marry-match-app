@@ -43,11 +43,18 @@ data class UserProfile(
     val respectScore: Int = 100
 )
 
-val availablePromptsList = listOf(
-    Pair("My ideal Sunday is...", "Mein idealer Sonntag ist..."),
-    Pair("What family means to me...", "Was Familie für mich bedeutet..."),
-    Pair("A value I will not compromise on...", "Ein Wert, bei dem ich keine Kompromisse eingehe..."),
-    Pair("The key to a lasting marriage is...", "Der Schlüssel zu einer dauerhaften Ehe ist..."),
-    Pair("How I handle disagreements...", "Wie ich Meinungsverschiedenheiten löse..."),
-    Pair("My favorite tradition to share...", "Meine Lieblingstradition, die ich teilen möchte...")
-)
+/** A question users can answer on their profile; [key] is what the database stores. */
+data class PromptQuestion(val key: String, val questionEn: String, val questionDe: String)
+
+object PromptCatalog {
+    val all = listOf(
+        PromptQuestion("ideal_sunday", "My ideal Sunday is...", "Mein idealer Sonntag ist..."),
+        PromptQuestion("family_means", "What family means to me...", "Was Familie für mich bedeutet..."),
+        PromptQuestion("non_negotiable", "A value I will not compromise on...", "Ein Wert, bei dem ich keine Kompromisse eingehe..."),
+        PromptQuestion("lasting_marriage", "The key to a lasting marriage is...", "Der Schlüssel zu einer dauerhaften Ehe ist..."),
+        PromptQuestion("disagreements", "How I handle disagreements...", "Wie ich Meinungsverschiedenheiten löse..."),
+        PromptQuestion("favorite_tradition", "My favorite tradition to share...", "Meine Lieblingstradition, die ich teilen möchte...")
+    )
+
+    fun find(key: String): PromptQuestion? = all.firstOrNull { it.key == key }
+}

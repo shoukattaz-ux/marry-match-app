@@ -116,7 +116,10 @@ dependencies {
   implementation(platform(libs.supabase.bom))
   implementation(libs.supabase.auth)
   implementation(libs.supabase.postgrest)
+  implementation(libs.supabase.storage)
   implementation(libs.ktor.client.okhttp)
+  // On-device face check for the first profile photo (free, runs offline)
+  implementation(libs.mlkit.face.detection)
   implementation(libs.kotlinx.serialization.json)
 
   implementation(libs.kotlinx.coroutines.android)

@@ -52,6 +52,8 @@ object AppConfig {
     const val PRIVACY_VERSION = "1.0"
     const val CONDUCT_VERSION = "1.0"
     const val LOCATION_NOTICE_VERSION = "1.0"
+    // Consent for optional sensitive profile data (religion), GDPR Art. 9
+    const val SENSITIVE_PROFILE_VERSION = "1.0"
 
     val isConfigured: Boolean
         get() = SUPABASE_URL.startsWith("https://") &&

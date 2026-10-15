@@ -43,6 +43,7 @@ googleid = "1.1.1"
 supabaseBom = "3.1.1"
 ktor = "3.0.3"
 kotlinxSerializationJson = "1.8.0"
+mlkitFaceDetection = "16.1.7"
 
 
 [libraries]
@@ -100,6 +101,8 @@ googleid = { group = "com.google.android.libraries.identity.googleid", name = "g
 supabase-bom = { group = "io.github.jan-tennert.supabase", name = "bom", version.ref = "supabaseBom" }
 supabase-auth = { group = "io.github.jan-tennert.supabase", name = "auth-kt" }
 supabase-postgrest = { group = "io.github.jan-tennert.supabase", name = "postgrest-kt" }
+supabase-storage = { group = "io.github.jan-tennert.supabase", name = "storage-kt" }
+mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFaceDetection" }
 ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }

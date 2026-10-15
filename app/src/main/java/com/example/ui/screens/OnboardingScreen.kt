@@ -1,22 +1,28 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.*
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,105 +30,121 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.core.AppLanguage
 import com.example.core.Localization
-import com.example.data.AuthState
 import com.example.data.MarryMatchRepository
+import com.example.data.PromptAnswer
 import com.example.model.GermanCities
-import com.example.model.ProfilePrompt
-import com.example.model.availablePromptsList
+import com.example.model.PromptCatalog
 import com.example.ui.components.MarryPrimaryButton
 import com.example.ui.components.MarrySecondaryButton
 import com.example.ui.theme.extendedColors
+import com.example.ui.viewmodel.OnboardingState
+import com.example.ui.viewmodel.OnboardingViewModel
 
+/**
+ * The 10-step profile setup (blueprint Phase 3), one question per screen with a progress bar.
+ * With [editMode] the same steps edit a finished profile and [onClose] is called when done.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingScreen(
     repository: MarryMatchRepository,
+    editMode: Boolean = false,
+    onClose: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val lang by repository.appLanguage.collectAsState()
-    val user by repository.currentUser.collectAsState()
-
-    var currentStep by remember { mutableIntStateOf(1) }
-    val totalSteps = 10
-
-    // Step state holders
-    var displayName by remember { mutableStateOf(user.displayName.ifBlank { "Lukas" }) }
-    var gender by remember { mutableStateOf(user.gender) }
-    var lookingFor by remember { mutableStateOf(user.lookingFor) }
-    var selectedCity by remember { mutableStateOf(user.city) }
-    var selectedRegion by remember { mutableStateOf(user.region) }
-    var marriageTimeline by remember { mutableStateOf(user.marriageTimeline) }
-    var wantsChildren by remember { mutableStateOf(user.wantsChildren) }
-    var selectedLanguages by remember { mutableStateOf(user.languages.toSet().ifEmpty { setOf("German", "English") }) }
-    var occupation by remember { mutableStateOf(user.occupation.ifBlank { "Software Engineer" }) }
-    var education by remember { mutableStateOf(user.education.ifBlank { "Master Degree" }) }
-    var heightCm by remember { mutableIntStateOf(user.heightCm) }
-    var smoking by remember { mutableStateOf(user.smoking) }
-    var religion by remember { mutableStateOf(user.religion.ifBlank { "Christian" }) }
-    var religionConsent by remember { mutableStateOf(true) }
-
-    // Photos state (min 3)
-    val defaultSamplePhotos = remember {
-        listOf(
-            "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=800&q=80"
-        )
+    val vm: OnboardingViewModel = viewModel(key = "onboarding_$editMode") {
+        OnboardingViewModel(repository, editMode)
     }
-    var photosList by remember { mutableStateOf(user.photos.ifEmpty { defaultSamplePhotos }) }
+    val state by vm.state.collectAsState()
+    val lang by repository.appLanguage.collectAsState()
+    val t: (String) -> String = { Localization.t(it, lang) }
+    val closeEditor = {
+        repository.refreshMyProfile()
+        onClose()
+    }
 
-    // Prompts (3 prompts)
-    var prompt1Key by remember { mutableStateOf("ideal_sunday") }
-    var prompt1Answer by remember { mutableStateOf("A fresh morning walk through Englischer Garten, brewing espresso together, and cooking a leisurely homemade dinner.") }
+    LaunchedEffect(state.finished) {
+        if (state.finished) {
+            if (editMode) onClose() else repository.onOnboardingFinished()
+        }
+    }
 
-    var prompt2Key by remember { mutableStateOf("family_means") }
-    var prompt2Answer by remember { mutableStateOf("A safe harbor of unconditional love, laughter across generations, and growing together through every chapter.") }
-
-    var prompt3Key by remember { mutableStateOf("non_negotiable") }
-    var prompt3Answer by remember { mutableStateOf("Integrity and deep mutual respect. In a marriage, communication is everything.") }
-
-    var bioText by remember { mutableStateOf(user.bio.ifBlank { "Engineer based in Munich. Looking for a partner who values mutual respect, honesty, and wants to build a warm, supportive family together." }) }
-
-    var stepError by remember { mutableStateOf<String?>(null) }
+    // System back goes one step back; on step 1 it leaves the editor (onboarding cannot be skipped).
+    BackHandler(enabled = state.step > 1 || editMode) {
+        if (state.step > 1) vm.back() else closeEditor()
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text(Localization.t("onboarding_title", lang), style = MaterialTheme.typography.titleMedium)
-                        Text("Step $currentStep of $totalSteps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+                        Text(
+                            t(if (editMode) "edit_profile_title" else "onboarding_title"),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            String.format(t("step_of"), state.step, OnboardingViewModel.TOTAL_STEPS),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.extendedColors.muted
+                        )
                     }
                 },
                 navigationIcon = {
-                    if (currentStep > 1) {
-                        IconButton(onClick = { currentStep--; stepError = null }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous step")
+                    if (state.step > 1) {
+                        IconButton(onClick = vm::back) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = t("back"))
                         }
+                    } else if (editMode) {
+                        IconButton(onClick = closeEditor) {
+                            Icon(Icons.Default.Close, contentDescription = t("close"))
+                        }
+                    }
+                },
+                actions = {
+                    TextButton(onClick = { repository.toggleLanguage() }) {
+                        Text(if (lang == AppLanguage.EN) "DE" else "EN", fontWeight = FontWeight.Bold)
                     }
                 }
             )
         }
     ) { padding ->
-        Column(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                // Progress Bar
+        when {
+            state.loading -> Box(
+                modifier = modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center
+            ) { CircularProgressIndicator() }
+
+            state.loadFailed -> Column(
+                modifier = modifier.fillMaxSize().padding(padding).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(t("profile_load_failed"), textAlign = TextAlign.Center)
+                Spacer(Modifier.height(16.dp))
+                MarryPrimaryButton(text = t("retry"), onClick = vm::load, testTag = "onboarding_retry_btn")
+            }
+
+            else -> Column(
+                modifier = modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 LinearProgressIndicator(
-                    progress = { currentStep / totalSteps.toFloat() },
+                    progress = { state.step / OnboardingViewModel.TOTAL_STEPS.toFloat() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(8.dp)
@@ -131,419 +153,431 @@ fun OnboardingScreen(
                     trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
 
-                when (currentStep) {
-                    1 -> {
-                        // Step 1: First name & birth date (age shown)
-                        Text(Localization.t("step_name_age", lang), style = MaterialTheme.typography.titleLarge)
-                        Text(Localization.t("your_age", lang), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.extendedColors.muted)
+                when (state.step) {
+                    1 -> NameAndAgeStep(state, vm, t)
+                    2 -> GenderStep(state, vm, t)
+                    3 -> CityStep(state, vm, t)
+                    4 -> TimelineStep(state, vm, t)
+                    5 -> FamilyStep(state, vm, t)
+                    6 -> LifestyleStep(state, vm, t)
+                    7 -> ReligionStep(state, vm, t)
+                    8 -> PhotosStep(state, vm, t)
+                    9 -> PromptsStep(state, vm, t, lang)
+                    10 -> BioStep(state, vm, t)
+                }
 
-                        OutlinedTextField(
-                            value = displayName,
-                            onValueChange = { displayName = it },
-                            label = { Text(Localization.t("first_name", lang)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().testTag("onboarding_name_input"),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("🎂", fontSize = 20.sp)
-                                Text(
-                                    text = if (lang == AppLanguage.EN) "Calculated Age: ${user.age} years old" else "Berechnetes Alter: ${user.age} Jahre",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
-
-                    2 -> {
-                        // Step 2: Gender & Looking For
-                        Text(Localization.t("step_gender", lang), style = MaterialTheme.typography.titleLarge)
-
-                        Text(Localization.t("gender", lang), style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ChoiceChip(label = Localization.t("man", lang), selected = gender == "man") { gender = "man" }
-                            ChoiceChip(label = Localization.t("woman", lang), selected = gender == "woman") { gender = "woman" }
-                            ChoiceChip(label = Localization.t("other", lang), selected = gender == "other") { gender = "other" }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Text(Localization.t("looking_for", lang), style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ChoiceChip(label = Localization.t("woman", lang), selected = lookingFor == "woman") { lookingFor = "woman" }
-                            ChoiceChip(label = Localization.t("man", lang), selected = lookingFor == "man") { lookingFor = "man" }
-                            ChoiceChip(label = Localization.t("any", lang), selected = lookingFor == "any") { lookingFor = "any" }
-                        }
-                    }
-
-                    3 -> {
-                        // Step 3: German City
-                        Text(Localization.t("step_city", lang), style = MaterialTheme.typography.titleLarge)
+                state.errorKey?.let { key ->
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text(
-                            if (lang == AppLanguage.EN) "Select the German city you live in. We match you with nearby marriage-minded singles."
-                            else "Wählen Sie Ihre Stadt in Deutschland.",
+                            t(key),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.extendedColors.muted
-                        )
-
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            GermanCities.list.take(10).forEach { city ->
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = if (selectedCity == city.name) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            selectedCity = city.name
-                                            selectedRegion = city.state
-                                        }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(14.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(city.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                                            Text(city.state, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
-                                        }
-                                        if (selectedCity == city.name) {
-                                            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    4 -> {
-                        // Step 4: Marriage Timeline
-                        Text(Localization.t("step_timeline", lang), style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            if (lang == AppLanguage.EN) "Clear intentions are the heartbeat of MarryMatch." else "Klare Absichten sind das Herzstück von MarryMatch.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.extendedColors.muted
-                        )
-
-                        listOf(
-                            "within_1y" to Localization.t("timeline_within_1y", lang),
-                            "1_2y" to Localization.t("timeline_1_2y", lang),
-                            "2_5y" to Localization.t("timeline_2_5y", lang),
-                            "open" to Localization.t("timeline_open", lang)
-                        ).forEach { (key, label) ->
-                            SelectableOptionCard(
-                                title = label,
-                                subtitle = if (key == "within_1y" || key == "1_2y") "Ready for commitment & building a family" else "Getting to know someone deeply first",
-                                selected = marriageTimeline == key,
-                                onClick = { marriageTimeline = key }
-                            )
-                        }
-                    }
-
-                    5 -> {
-                        // Step 5: Family & Children + Languages
-                        Text(Localization.t("step_family", lang), style = MaterialTheme.typography.titleLarge)
-
-                        Text(Localization.t("wants_children", lang), style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ChoiceChip(label = Localization.t("children_yes", lang), selected = wantsChildren == "yes") { wantsChildren = "yes" }
-                            ChoiceChip(label = Localization.t("children_no", lang), selected = wantsChildren == "no") { wantsChildren = "no" }
-                            ChoiceChip(label = Localization.t("children_open", lang), selected = wantsChildren == "open") { wantsChildren = "open" }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Text(Localization.t("languages_spoken", lang), style = MaterialTheme.typography.labelLarge)
-                        listOf("German", "English", "Turkish", "French", "Arabic", "Italian", "Spanish", "Russian").chunked(3).forEach { rowLangs ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                rowLangs.forEach { l ->
-                                    val isSel = selectedLanguages.contains(l)
-                                    FilterChip(
-                                        selected = isSel,
-                                        onClick = {
-                                            selectedLanguages = if (isSel) selectedLanguages - l else selectedLanguages + l
-                                        },
-                                        label = { Text(l) }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    6 -> {
-                        // Step 6: Lifestyle (Occupation, Education, Height, Smoking)
-                        Text(Localization.t("step_lifestyle", lang), style = MaterialTheme.typography.titleLarge)
-
-                        OutlinedTextField(
-                            value = occupation,
-                            onValueChange = { occupation = it },
-                            label = { Text(Localization.t("occupation", lang)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().testTag("onboarding_occupation_input"),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        OutlinedTextField(
-                            value = education,
-                            onValueChange = { education = it },
-                            label = { Text(Localization.t("education", lang)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        OutlinedTextField(
-                            value = heightCm.toString(),
-                            onValueChange = { it.toIntOrNull()?.let { h -> heightCm = h } },
-                            label = { Text(Localization.t("height", lang)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        Text(Localization.t("smoking", lang), style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ChoiceChip(label = "Non-smoker", selected = smoking == "Non-smoker") { smoking = "Non-smoker" }
-                            ChoiceChip(label = "Occasionally", selected = smoking == "Occasionally") { smoking = "Occasionally" }
-                            ChoiceChip(label = "Smoker", selected = smoking == "Smoker") { smoking = "Smoker" }
-                        }
-                    }
-
-                    7 -> {
-                        // Step 7: Optional Religion & Values (GDPR Art 9)
-                        Text(Localization.t("step_religion", lang), style = MaterialTheme.typography.titleLarge)
-
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Text(
-                                    text = Localization.t("sensitive_data_notice", lang),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { religionConsent = !religionConsent }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = religionConsent,
-                                onCheckedChange = { religionConsent = it }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = Localization.t("sensitive_consent_box", lang),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-
-                        if (religionConsent) {
-                            OutlinedTextField(
-                                value = religion,
-                                onValueChange = { religion = it },
-                                label = { Text(if (lang == AppLanguage.EN) "Religion or Worldview (Optional)" else "Religion oder Weltanschauung (Freiwillig)") },
-                                placeholder = { Text("e.g. Christian, Muslim, Jewish, Spiritual, Secular") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                        }
-                    }
-
-                    8 -> {
-                        // Step 8: Photos (Min 3, Max 6)
-                        Text(Localization.t("step_photos", lang), style = MaterialTheme.typography.titleLarge)
-                        Text(Localization.t("step_photos_desc", lang), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.extendedColors.muted)
-
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(photosList) { url ->
-                                Box(
-                                    modifier = Modifier
-                                        .size(130.dp, 170.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                ) {
-                                    AsyncImage(
-                                        model = url,
-                                        contentDescription = "Profile photo",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                    IconButton(
-                                        onClick = {
-                                            if (photosList.size > 3) {
-                                                photosList = photosList - url
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(4.dp)
-                                            .size(28.dp)
-                                            .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                                    ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            }
-                        }
-
-                        Text(
-                            text = if (photosList.size >= 3) "✓ ${photosList.size} photos ready" else "⚠️ Need at least 3 photos (currently ${photosList.size})",
-                            color = if (photosList.size >= 3) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    }
-
-                    9 -> {
-                        // Step 9: 3 Prompts
-                        Text(Localization.t("step_prompts", lang), style = MaterialTheme.typography.titleLarge)
-                        Text(Localization.t("choose_prompts_desc", lang), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.extendedColors.muted)
-
-                        // Prompt 1
-                        Text("Prompt 1: My ideal Sunday is...", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                        OutlinedTextField(
-                            value = prompt1Answer,
-                            onValueChange = { prompt1Answer = it },
-                            placeholder = { Text("Write your thoughtful answer...") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        // Prompt 2
-                        Text("Prompt 2: What family means to me...", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                        OutlinedTextField(
-                            value = prompt2Answer,
-                            onValueChange = { prompt2Answer = it },
-                            placeholder = { Text("Write your thoughtful answer...") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        // Prompt 3
-                        Text("Prompt 3: A value I will not compromise on...", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                        OutlinedTextField(
-                            value = prompt3Answer,
-                            onValueChange = { prompt3Answer = it },
-                            placeholder = { Text("Write your thoughtful answer...") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                    }
-
-                    10 -> {
-                        // Step 10: Bio
-                        Text(Localization.t("step_bio", lang), style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            if (lang == AppLanguage.EN) "Tell prospective matches about your character, interests, and heart for marriage."
-                            else "Erzählen Sie Interessenten von Ihrem Charakter und Ihren Werten.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.extendedColors.muted
-                        )
-
-                        OutlinedTextField(
-                            value = bioText,
-                            onValueChange = { if (it.length <= 500) bioText = it },
-                            label = { Text(Localization.t("step_bio", lang)) },
-                            placeholder = { Text(Localization.t("bio_placeholder", lang)) },
-                            minLines = 4,
-                            maxLines = 6,
-                            supportingText = {
-                                Text("${bioText.length} / 500 characters", modifier = Modifier.fillMaxWidth())
-                            },
-                            modifier = Modifier.fillMaxWidth().testTag("onboarding_bio_input"),
-                            shape = RoundedCornerShape(12.dp)
+                            modifier = Modifier.padding(12.dp).testTag("onboarding_error")
                         )
                     }
                 }
 
-                if (stepError != null) {
-                    Text(stepError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+
+                MarryPrimaryButton(
+                    text = when {
+                        state.step < OnboardingViewModel.TOTAL_STEPS -> t("continue")
+                        editMode -> t("save")
+                        else -> t("complete_profile")
+                    },
+                    onClick = vm::next,
+                    enabled = !state.saving && !state.photoBusy,
+                    testTag = "onboarding_continue_btn"
+                )
+                if (state.saving) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(24.dp))
+@Composable
+private fun StepTitle(title: String, subtitle: String? = null) {
+    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+    if (subtitle != null) {
+        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.extendedColors.muted)
+    }
+}
 
-            // Navigation Button
-            MarryPrimaryButton(
-                text = if (currentStep < totalSteps) {
-                    if (lang == AppLanguage.EN) "Continue" else "Weiter"
-                } else {
-                    Localization.t("complete_profile", lang)
-                },
-                onClick = {
-                    if (currentStep < totalSteps) {
-                        if (currentStep == 1 && displayName.isBlank()) {
-                            stepError = if (lang == AppLanguage.EN) "Please enter your first name." else "Bitte geben Sie Ihren Vornamen ein."
-                            return@MarryPrimaryButton
+@Composable
+private fun NameAndAgeStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
+    StepTitle(t("step_name_age"), t("your_age"))
+    OutlinedTextField(
+        value = state.displayName,
+        onValueChange = { v -> if (v.length <= 40) vm.edit { copy(displayName = v) } },
+        label = { Text(t("first_name")) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("onboarding_name_input"),
+        shape = RoundedCornerShape(12.dp)
+    )
+    if (!state.birthDateLocked) {
+        // Only for accounts created before the birth date was stored at sign-up.
+        Text(t("birth_date_full"), style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                Triple(state.birthDay, 2, "birth_day"),
+                Triple(state.birthMonth, 2, "birth_month"),
+                Triple(state.birthYear, 4, "birth_year_full")
+            ).forEachIndexed { index, (value, maxLen, labelKey) ->
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { v ->
+                        if (v.length <= maxLen && v.all(Char::isDigit)) vm.edit {
+                            when (index) {
+                                0 -> copy(birthDay = v)
+                                1 -> copy(birthMonth = v)
+                                else -> copy(birthYear = v)
+                            }
                         }
-                        if (currentStep == 6 && occupation.isBlank()) {
-                            stepError = if (lang == AppLanguage.EN) "Occupation is required." else "Berufsangabe ist erforderlich."
-                            return@MarryPrimaryButton
-                        }
-                        if (currentStep == 8 && photosList.size < 3) {
-                            stepError = if (lang == AppLanguage.EN) "Please provide at least 3 photos." else "Bitte laden Sie mindestens 3 Fotos hoch."
-                            return@MarryPrimaryButton
-                        }
-                        stepError = null
-                        currentStep++
-                    } else {
-                        // Finalize onboarding
-                        val compiledPrompts = listOf(
-                            ProfilePrompt("ideal_sunday", "My ideal Sunday is...", "Mein idealer Sonntag ist...", prompt1Answer),
-                            ProfilePrompt("family_means", "What family means to me...", "Was Familie für mich bedeutet...", prompt2Answer),
-                            ProfilePrompt("non_negotiable", "A value I will not compromise on...", "Ein Wert, bei dem ich keine Kompromisse eingehe...", prompt3Answer)
-                        )
-                        repository.updateCurrentUser {
-                            it.copy(
-                                displayName = displayName,
-                                gender = gender,
-                                lookingFor = lookingFor,
-                                city = selectedCity,
-                                region = selectedRegion,
-                                marriageTimeline = marriageTimeline,
-                                wantsChildren = wantsChildren,
-                                languages = selectedLanguages.toList(),
-                                occupation = occupation,
-                                education = education,
-                                heightCm = heightCm,
-                                smoking = smoking,
-                                religion = if (religionConsent) religion else "",
-                                photos = photosList,
-                                prompts = compiledPrompts,
-                                bio = bioText,
-                                onboardingDone = true
-                            )
-                        }
-                        repository.setAuthState(AuthState.LOGGED_IN)
-                    }
-                },
-                testTag = "onboarding_continue_btn"
+                    },
+                    label = { Text(t(labelKey)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(if (index == 2) 1.3f else 1f),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
+    }
+    state.age?.let { age ->
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                "${t("age")}: $age",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(14.dp)
             )
         }
     }
 }
+
+@Composable
+private fun GenderStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
+    StepTitle(t("step_gender"))
+    Text(t("gender"), style = MaterialTheme.typography.labelLarge)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("woman", "man", "other").forEach { g ->
+            ChoiceChip(label = t(g), selected = state.gender == g) { vm.edit { copy(gender = g) } }
+        }
+    }
+    Text(t("looking_for"), style = MaterialTheme.typography.labelLarge)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("woman", "man", "any").forEach { g ->
+            ChoiceChip(label = t(g), selected = state.lookingFor == g) { vm.edit { copy(lookingFor = g) } }
+        }
+    }
+}
+
+@Composable
+private fun CityStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
+    val context = LocalContext.current
+    var query by remember { mutableStateOf("") }
+    StepTitle(t("step_city"))
+    MarrySecondaryButton(
+        text = t("use_my_location"),
+        onClick = { vm.useMyLocation(context) },
+        enabled = !state.locating,
+        leadingIcon = Icons.Default.MyLocation,
+        testTag = "onboarding_use_location_btn"
+    )
+    if (state.locating) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+
+    OutlinedTextField(
+        value = query,
+        onValueChange = { query = it },
+        label = { Text(t("search_city")) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    )
+
+    // The located city may not be in the short list, so show the current choice first.
+    val options = buildList {
+        if (state.city.isNotBlank() && GermanCities.list.none { it.name == state.city }) add(state.city to state.region)
+        GermanCities.list
+            .filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
+            .forEach { add(it.name to it.state) }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        options.forEach { (city, region) ->
+            val selected = state.city == city
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { vm.edit { copy(city = city, region = region) } }
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(city, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        Text(region, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+                    }
+                    if (selected) Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
+    StepTitle(t("step_timeline"))
+    listOf("within_1y", "1_2y", "2_5y", "open").forEach { key ->
+        SelectableOptionCard(
+            title = t("timeline_$key"),
+            subtitle = t(if (key == "within_1y" || key == "1_2y") "timeline_hint_soon" else "timeline_hint_later"),
+            selected = state.marriageTimeline == key,
+            onClick = { vm.edit { copy(marriageTimeline = key) } }
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FamilyStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
+    StepTitle(t("step_family"))
+    Text(t("wants_children"), style = MaterialTheme.typography.labelLarge)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("yes", "no", "open").forEach { c ->
+            ChoiceChip(label = t("children_$c"), selected = state.wantsChildren == c) { vm.edit { copy(wantsChildren = c) } }
+        }
+    }
+    Text(t("languages_spoken"), style = MaterialTheme.typography.labelLarge)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OnboardingViewModel.LANGUAGES.forEach { l ->
+            val selected = l in state.languages
+            FilterChip(
+                selected = selected,
+                onClick = { vm.edit { copy(languages = if (selected) languages - l else languages + l) } },
+                label = { Text(t("lang_$l")) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun LifestyleStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
+    StepTitle(t("step_lifestyle"))
+    OutlinedTextField(
+        value = state.occupation,
+        onValueChange = { v -> vm.edit { copy(occupation = v) } },
+        label = { Text(t("occupation")) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("onboarding_occupation_input"),
+        shape = RoundedCornerShape(12.dp)
+    )
+    OutlinedTextField(
+        value = state.education,
+        onValueChange = { v -> vm.edit { copy(education = v) } },
+        label = { Text(t("education_optional")) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    )
+    OutlinedTextField(
+        value = state.heightText,
+        onValueChange = { v -> if (v.length <= 3 && v.all(Char::isDigit)) vm.edit { copy(heightText = v) } },
+        label = { Text(t("height_optional")) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    )
+    Text(t("smoking"), style = MaterialTheme.typography.labelLarge)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OnboardingViewModel.SMOKING.forEach { s ->
+            ChoiceChip(label = t("smoking_$s"), selected = state.smoking == s) {
+                vm.edit { copy(smoking = if (smoking == s) "" else s) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReligionStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
+    StepTitle(t("step_religion"))
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(modifier = Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Text(t("sensitive_data_notice"), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    // Unticked by default: explicit, separate consent for special-category data.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { vm.edit { copy(religionConsent = !religionConsent) } }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = state.religionConsent,
+            onCheckedChange = { checked -> vm.edit { copy(religionConsent = checked) } },
+            modifier = Modifier.testTag("onboarding_religion_consent")
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(t("sensitive_consent_box"), style = MaterialTheme.typography.bodySmall)
+    }
+    if (state.religionConsent) {
+        OutlinedTextField(
+            value = state.religion,
+            onValueChange = { v -> if (v.length <= 60) vm.edit { copy(religion = v) } },
+            label = { Text(t("religion_label")) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
+    }
+}
+
+@Composable
+private fun PhotosStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
+    val context = LocalContext.current
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) vm.addPhoto(context, uri)
+    }
+    StepTitle(t("step_photos"), t("step_photos_desc"))
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        itemsIndexed(state.photos, key = { _, p -> p.id }) { index, photo ->
+            Box(modifier = Modifier.size(130.dp, 170.dp).clip(RoundedCornerShape(12.dp))) {
+                AsyncImage(
+                    model = photo.url,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                IconButton(
+                    onClick = { vm.removePhoto(photo) },
+                    enabled = !state.photoBusy,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(28.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = t("delete"), tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+                Surface(
+                    color = Color.Black.copy(alpha = 0.6f),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .clickable(enabled = index > 0 && !state.photoBusy) { vm.makeMainPhoto(photo) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(6.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (index == 0) Icon(Icons.Default.Star, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        Text(
+                            t(if (index == 0) "main_photo" else "make_main_photo"),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+            }
+        }
+    }
+    Text(
+        String.format(t("photos_count"), state.photos.size),
+        style = MaterialTheme.typography.labelLarge,
+        color = if (state.photos.size >= 3) MaterialTheme.colorScheme.secondary else MaterialTheme.extendedColors.muted
+    )
+    if (state.photoBusy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    MarrySecondaryButton(
+        text = t("add_photo"),
+        onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+        enabled = !state.photoBusy && state.photos.size < 6,
+        leadingIcon = Icons.Default.Add,
+        testTag = "onboarding_add_photo_btn"
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PromptsStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String, lang: AppLanguage) {
+    StepTitle(t("step_prompts"), t("choose_prompts_desc"))
+    state.prompts.forEachIndexed { index, prompt ->
+        var expanded by remember { mutableStateOf(false) }
+        val usedByOthers = state.prompts.filterIndexed { i, _ -> i != index }.map { it.key }.toSet()
+        val question = PromptCatalog.find(prompt.key)
+        Text(String.format(t("prompt_question"), index + 1), style = MaterialTheme.typography.labelLarge)
+        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+            OutlinedTextField(
+                value = question?.let { if (lang == AppLanguage.DE) it.questionDe else it.questionEn }.orEmpty(),
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                PromptCatalog.all.filter { it.key !in usedByOthers }.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(if (lang == AppLanguage.DE) option.questionDe else option.questionEn) },
+                        onClick = {
+                            expanded = false
+                            vm.edit { copy(prompts = prompts.replaceAt(index, PromptAnswer(option.key, prompt.answer))) }
+                        }
+                    )
+                }
+            }
+        }
+        OutlinedTextField(
+            value = prompt.answer,
+            onValueChange = { v ->
+                if (v.length <= 300) vm.edit { copy(prompts = prompts.replaceAt(index, prompt.copy(answer = v))) }
+            },
+            label = { Text(t("prompt_answer")) },
+            supportingText = { Text("${prompt.answer.length} / 300") },
+            minLines = 2,
+            modifier = Modifier.fillMaxWidth().testTag("onboarding_prompt_answer_$index"),
+            shape = RoundedCornerShape(12.dp)
+        )
+    }
+}
+
+@Composable
+private fun BioStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
+    StepTitle(t("step_bio"))
+    OutlinedTextField(
+        value = state.bio,
+        onValueChange = { v -> if (v.length <= 500) vm.edit { copy(bio = v) } },
+        placeholder = { Text(t("bio_placeholder")) },
+        minLines = 4,
+        maxLines = 8,
+        supportingText = { Text("${state.bio.length} / 500") },
+        modifier = Modifier.fillMaxWidth().testTag("onboarding_bio_input"),
+        shape = RoundedCornerShape(12.dp)
+    )
+}
+
+private fun <T> List<T>.replaceAt(index: Int, value: T): List<T> = mapIndexed { i, old -> if (i == index) value else old }
 
 @Composable
 fun ChoiceChip(

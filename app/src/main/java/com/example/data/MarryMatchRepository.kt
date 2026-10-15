@@ -5,6 +5,8 @@ import com.example.core.AppConfig
 import com.example.core.AppLanguage
 import com.example.model.ChatMessage
 import com.example.model.MatchItem
+import com.example.model.ProfilePrompt
+import com.example.model.PromptCatalog
 import com.example.model.ReportItem
 import com.example.model.UserProfile
 import com.example.model.VerificationRequest
@@ -17,6 +19,7 @@ import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.storage.Storage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,7 +28,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.util.UUID
 
@@ -54,6 +60,9 @@ class MarryMatchRepository {
 
     private var _supabase: SupabaseClient? = null
     val supabase: SupabaseClient? get() = _supabase
+
+    private var _profileService: ProfileService? = null
+    val profileService: ProfileService? get() = _profileService
 
     private val _isConfigured = MutableStateFlow(AppConfig.isConfigured)
     val isConfigured: StateFlow<Boolean> = _isConfigured.asStateFlow()
@@ -154,7 +163,9 @@ class MarryMatchRepository {
                 ) {
                     install(Auth)
                     install(Postgrest)
+                    install(Storage)
                 }
+                _profileService = ProfileService(_supabase!!)
                 repositoryScope.launch {
                     checkInitialSession()
                 }
@@ -174,14 +185,7 @@ class MarryMatchRepository {
             val session = client.auth.currentSessionOrNull()
             if (session != null && session.user != null) {
                 val user = session.user!!
-                val userEmail = user.email ?: ""
-                _currentUser.value = _currentUser.value.copy(
-                    id = user.id,
-                    email = userEmail,
-                    displayName = user.userMetadata?.get("display_name")?.toString()?.replace("\"", "") ?: userEmail.substringBefore("@"),
-                    isAdmin = false,
-                    onboardingDone = true
-                )
+                applyAuthUser(user.id, user.email ?: "", user.userMetadata)
                 routeAfterLogin(client, user.id)
             } else {
                 _authState.value = AuthState.WELCOME
@@ -279,11 +283,99 @@ class MarryMatchRepository {
         }
         if (countryOk) {
             _isPostLoginLocationGate.value = false
-            _authState.value = AuthState.LOGGED_IN
+            routeByProfile(userId)
         } else {
             _isPostLoginLocationGate.value = true
             _authState.value = AuthState.LOCATION_GATE
         }
+    }
+
+    /** Starts the account fresh from the signed-in auth user (birth date comes from the sign-up data). */
+    private fun applyAuthUser(id: String, email: String, metadata: JsonObject?) {
+        val birthDate = metadata?.get("birth_date")?.jsonPrimitive?.contentOrNull.orEmpty()
+        _currentUser.value = createEmptyUser().copy(
+            id = id,
+            email = email,
+            displayName = metadata?.get("display_name")?.jsonPrimitive?.contentOrNull.orEmpty(),
+            birthDate = birthDate,
+            birthYear = birthDate.take(4).toIntOrNull() ?: 0,
+            age = ageFromBirthDate(birthDate)
+        )
+    }
+
+    /** Opens onboarding until the profile is complete, otherwise loads it and opens the app. */
+    private suspend fun routeByProfile(userId: String) {
+        val service = _profileService
+        val profile = try {
+            service?.loadMyProfile(userId)
+        } catch (e: Throwable) {
+            // Do not lock the user out on a network error; the profile screen can be reloaded later.
+            Log.w("MarryMatchRepository", "Could not load profile: ${e.message}")
+            _authState.value = AuthState.LOGGED_IN
+            return
+        }
+        if (profile == null || !profile.row.onboardingDone) {
+            _authState.value = AuthState.ONBOARDING
+        } else {
+            applyProfile(profile)
+            _authState.value = AuthState.LOGGED_IN
+        }
+    }
+
+    /** Reloads the user's own profile from the server, e.g. after onboarding or editing. */
+    suspend fun reloadMyProfile(): Result<Unit> {
+        val service = _profileService ?: return Result.failure(IllegalStateException("Supabase is not configured."))
+        val userId = _currentUser.value.id.ifBlank { return Result.failure(IllegalStateException("Not signed in.")) }
+        return try {
+            service.loadMyProfile(userId)?.let { applyProfile(it) }
+            Result.success(Unit)
+        } catch (e: Throwable) {
+            Result.failure(e)
+        }
+    }
+
+    /** Reloads the profile in the background (steps saved before closing the editor show up). */
+    fun refreshMyProfile() {
+        repositoryScope.launch { reloadMyProfile() }
+    }
+
+    fun onOnboardingFinished() {
+        _authState.value = AuthState.LOGGED_IN
+    }
+
+    private fun applyProfile(profile: MyProfile) {
+        val row = profile.row
+        _currentUser.value = _currentUser.value.copy(
+            displayName = row.displayName,
+            birthDate = row.birthDate,
+            birthYear = row.birthDate.take(4).toIntOrNull() ?: 0,
+            age = ageFromBirthDate(row.birthDate),
+            gender = row.gender,
+            lookingFor = row.lookingFor,
+            city = row.city.orEmpty(),
+            region = row.region.orEmpty(),
+            bio = row.bio.orEmpty(),
+            marriageTimeline = row.marriageTimeline.orEmpty(),
+            wantsChildren = row.wantsChildren.orEmpty(),
+            religion = row.religion.orEmpty(),
+            smoking = row.smoking.orEmpty(),
+            education = row.education.orEmpty(),
+            occupation = row.occupation.orEmpty(),
+            languages = row.languages,
+            interests = emptyList(),
+            heightCm = row.heightCm ?: 0,
+            onboardingDone = row.onboardingDone,
+            photos = profile.photos.map { it.url },
+            prompts = profile.prompts.map { answer ->
+                val question = PromptCatalog.find(answer.key)
+                ProfilePrompt(
+                    promptKey = answer.key,
+                    questionEn = question?.questionEn ?: answer.key,
+                    questionDe = question?.questionDe ?: answer.key,
+                    answer = answer.answer
+                )
+            }
+        )
     }
 
     suspend fun signInWithSupabase(email: String, password: String): Result<Unit> {
@@ -297,14 +389,7 @@ class MarryMatchRepository {
             }
             val user = client.auth.currentUserOrNull()
             if (user != null) {
-                val userEmail = user.email ?: email.trim()
-                _currentUser.value = _currentUser.value.copy(
-                    id = user.id,
-                    email = userEmail,
-                    displayName = user.userMetadata?.get("display_name")?.toString()?.replace("\"", "") ?: userEmail.substringBefore("@"),
-                    isAdmin = false,
-                    onboardingDone = true
-                )
+                applyAuthUser(user.id, user.email ?: email.trim(), user.userMetadata)
                 routeAfterLogin(client, user.id)
                 Result.success(Unit)
             } else {
@@ -358,6 +443,10 @@ class MarryMatchRepository {
         if (_isPostLoginLocationGate.value) {
             _isPostLoginLocationGate.value = false
             _authState.value = AuthState.LOGGED_IN
+            val userId = _currentUser.value.id
+            if (userId.isNotBlank()) {
+                repositoryScope.launch { routeByProfile(userId) }
+            }
         } else {
             this.signupPass = signupPass
             signupPassIssuedAtMs = System.currentTimeMillis()
@@ -547,6 +636,13 @@ class MarryMatchRepository {
     companion object {
         // The server accepts a pass for 15 minutes; stop one minute early to allow for clock drift.
         private const val SIGNUP_PASS_MAX_AGE_MS = 14 * 60 * 1000L
+
+        /** Full years since [birthDate] (YYYY-MM-DD), or 0 when it is missing or invalid. */
+        fun ageFromBirthDate(birthDate: String): Int = try {
+            java.time.Period.between(java.time.LocalDate.parse(birthDate), java.time.LocalDate.now()).years
+        } catch (e: Exception) {
+            0
+        }
 
         fun createEmptyUser(): UserProfile = UserProfile(
             id = "",

@@ -96,8 +96,7 @@ fun MainApp(
             LocationRejectedScreen(repository = repository)
         }
         AuthState.ONBOARDING -> {
-            BackHandler { repository.setAuthState(AuthState.LOCATION_GATE) }
-            ProfileCreationScreen(repository = repository)
+            OnboardingScreen(repository = repository)
         }
         AuthState.LOGGED_IN -> {
             // Main Authenticated Experience
@@ -159,10 +158,10 @@ fun MainApp(
                         )
                     }
                     ActiveSubScreen.PROFILE_CREATION -> {
-                        BackHandler { activeSubScreen = ActiveSubScreen.NONE }
-                        ProfileCreationScreen(
+                        OnboardingScreen(
                             repository = repository,
-                            onComplete = { activeSubScreen = ActiveSubScreen.NONE }
+                            editMode = true,
+                            onClose = { activeSubScreen = ActiveSubScreen.NONE }
                         )
                     }
                     ActiveSubScreen.NONE -> {}
