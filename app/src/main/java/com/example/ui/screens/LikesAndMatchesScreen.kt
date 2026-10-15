@@ -50,7 +50,11 @@ fun LikesAndMatchesScreen(
 ) {
     val lang by repository.appLanguage.collectAsState()
     val matches by repository.matches.collectAsState()
+    val likesCount by repository.receivedLikesCount.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Matches, 1: Likes You
+
+    // Fresh matches and "likes you" count every time the tab opens
+    LaunchedEffect(Unit) { repository.loadMatches() }
 
     Scaffold(
         topBar = {
@@ -125,6 +129,7 @@ fun LikesAndMatchesScreen(
                         items(matches) { match ->
                             MatchRow(
                                 match = match,
+                                newMatchText = Localization.t("new_match_say_hello", lang),
                                 onClick = { onOpenChat(match) }
                             )
                         }
@@ -132,7 +137,7 @@ fun LikesAndMatchesScreen(
                 }
             } else {
                 // Likes You Blurred Teaser
-                LikesYouBlurredView(lang = lang)
+                LikesYouBlurredView(lang = lang, likesCount = likesCount)
             }
         }
     }
@@ -141,6 +146,7 @@ fun LikesAndMatchesScreen(
 @Composable
 fun MatchRow(
     match: MatchItem,
+    newMatchText: String,
     onClick: () -> Unit
 ) {
     Surface(
@@ -188,7 +194,7 @@ fun MatchRow(
                 Spacer(modifier = Modifier.height(2.dp))
 
                 Text(
-                    text = match.lastMessage,
+                    text = match.lastMessage.ifBlank { newMatchText },
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -217,7 +223,7 @@ fun MatchRow(
 }
 
 @Composable
-fun LikesYouBlurredView(lang: AppLanguage) {
+fun LikesYouBlurredView(lang: AppLanguage, likesCount: Int) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -278,7 +284,8 @@ fun LikesYouBlurredView(lang: AppLanguage) {
                 }
 
                 Text(
-                    text = "14 " + Localization.t("blurred_likes_desc", lang),
+                    text = if (likesCount > 0) String.format(Localization.t("likes_you_count", lang), likesCount)
+                    else Localization.t("likes_you_none", lang),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center

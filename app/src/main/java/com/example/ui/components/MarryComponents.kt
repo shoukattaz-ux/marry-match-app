@@ -156,13 +156,14 @@ fun VerifiedBadge(
 @Composable
 fun MarriageTimelineChip(
     timeline: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isGerman: Boolean = false
 ) {
     val (label, icon) = when (timeline) {
-        "within_1y" -> "Ready to marry within 1 year" to "💍"
-        "1_2y" -> "Looking to marry within 1 to 2 years" to "💍"
-        "2_5y" -> "Looking to marry within 2 to 5 years" to "⏳"
-        else -> "Marriage minded / Open timeline" to "🤍"
+        "within_1y" -> (if (isGerman) "Möchte innerhalb von 1 Jahr heiraten" else "Ready to marry within 1 year") to "💍"
+        "1_2y" -> (if (isGerman) "Möchte in 1 bis 2 Jahren heiraten" else "Looking to marry within 1 to 2 years") to "💍"
+        "2_5y" -> (if (isGerman) "Möchte in 2 bis 5 Jahren heiraten" else "Looking to marry within 2 to 5 years") to "⏳"
+        else -> (if (isGerman) "Ehe als Ziel, Zeitpunkt offen" else "Marriage minded, open timeline") to "🤍"
     }
 
     Surface(

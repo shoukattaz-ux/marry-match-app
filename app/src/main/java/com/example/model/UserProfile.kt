@@ -7,7 +7,8 @@ data class ProfilePrompt(
     val promptKey: String,
     val questionEn: String,
     val questionDe: String,
-    val answer: String
+    val answer: String,
+    val id: String = ""  // database id, used to like this exact prompt
 )
 
 @Serializable
@@ -34,6 +35,7 @@ data class UserProfile(
     val heightCm: Int = 175,
     val onboardingDone: Boolean = false,
     val photos: List<String> = emptyList(), // image urls
+    val photoIds: List<String> = emptyList(), // database ids of [photos], same order
     val prompts: List<ProfilePrompt> = emptyList(),
     val selfieVerified: Boolean = false,
     val phoneVerified: Boolean = false,

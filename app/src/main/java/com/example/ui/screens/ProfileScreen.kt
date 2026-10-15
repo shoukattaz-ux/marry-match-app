@@ -138,7 +138,7 @@ fun ProfileScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    MarriageTimelineChip(timeline = user.marriageTimeline)
+                    MarriageTimelineChip(timeline = user.marriageTimeline, isGerman = lang == AppLanguage.DE)
 
                     Spacer(modifier = Modifier.height(12.dp))
 

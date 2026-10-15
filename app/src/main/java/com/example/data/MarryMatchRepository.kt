@@ -71,6 +71,9 @@ class MarryMatchRepository {
     private var _profileService: ProfileService? = null
     val profileService: ProfileService? get() = _profileService
 
+    private var _discovery: DiscoveryApi? = null
+    val discovery: DiscoveryApi? get() = _discovery
+
     private val _isConfigured = MutableStateFlow(AppConfig.isConfigured)
     val isConfigured: StateFlow<Boolean> = _isConfigured.asStateFlow()
 
@@ -95,18 +98,15 @@ class MarryMatchRepository {
     private val _dailyProfiles = MutableStateFlow(SampleDataProvider.getDailyProfiles())
     val dailyProfiles: StateFlow<List<UserProfile>> = _dailyProfiles.asStateFlow()
 
-    private val _currentProfileIndex = MutableStateFlow(0)
-    val currentProfileIndex: StateFlow<Int> = _currentProfileIndex.asStateFlow()
-
-    private val _matches = MutableStateFlow(SampleDataProvider.getInitialMatches())
+    // Real matches from the server (Phase 6); chat messages stay on the phone until Phase 7.
+    private val _matches = MutableStateFlow<List<MatchItem>>(emptyList())
     val matches: StateFlow<List<MatchItem>> = _matches.asStateFlow()
 
-    private val _chatMessages = MutableStateFlow<Map<String, List<ChatMessage>>>(
-        mapOf(
-            "match_1" to SampleDataProvider.getInitialMessages("match_1"),
-            "match_2" to SampleDataProvider.getInitialMessages("match_2")
-        )
-    )
+    // How many people liked the user without a match yet (shown blurred on the Likes tab).
+    private val _receivedLikesCount = MutableStateFlow(0)
+    val receivedLikesCount: StateFlow<Int> = _receivedLikesCount.asStateFlow()
+
+    private val _chatMessages = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
     val chatMessages: StateFlow<Map<String, List<ChatMessage>>> = _chatMessages.asStateFlow()
 
     private val _blockedUserIds = MutableStateFlow<Set<String>>(emptySet())
@@ -173,6 +173,7 @@ class MarryMatchRepository {
                     install(Storage)
                 }
                 _profileService = ProfileService(_supabase!!)
+                _discovery = SupabaseDiscoveryService(_supabase!!) { _currentUser.value.id }
                 repositoryScope.launch {
                     checkInitialSession()
                 }
@@ -327,7 +328,38 @@ class MarryMatchRepository {
         } else {
             applyProfile(profile)
             _authState.value = AuthState.LOGGED_IN
+            refreshMatches()
         }
+    }
+
+    /** Reloads matches and the "likes you" count from the server. */
+    suspend fun loadMatches() {
+        val api = _discovery ?: return
+        if (_currentUser.value.id.isBlank()) return
+        try {
+            _matches.value = api.getMatches().map { m ->
+                MatchItem(
+                    id = m.matchId,
+                    matchedUser = m.user,
+                    matchedAt = m.matchedAt,
+                    lastMessage = "",
+                    lastMessageTime = ""
+                )
+            }
+            _receivedLikesCount.value = api.receivedLikesCount()
+        } catch (e: Throwable) {
+            Log.w("MarryMatchRepository", "Could not load matches: ${e.message}")
+        }
+    }
+
+    fun refreshMatches() {
+        repositoryScope.launch { loadMatches() }
+    }
+
+    /** Called after a mutual like: loads the new match, then shows the celebration. */
+    suspend fun onNewMatch(person: UserProfile) {
+        loadMatches()
+        _matchCelebration.value = person
     }
 
     /** Reloads the user's own profile from the server, e.g. after onboarding or editing. */
@@ -433,6 +465,10 @@ class MarryMatchRepository {
         _isPostLoginLocationGate.value = false
         _currentUser.value = createEmptyUser()
         _blockedUserIds.value = emptySet()
+        _matches.value = emptyList()
+        _chatMessages.value = emptyMap()
+        _receivedLikesCount.value = 0
+        _matchCelebration.value = null
         _authState.value = AuthState.WELCOME
     }
 
@@ -493,28 +529,6 @@ class MarryMatchRepository {
         _currentUser.value = updater(_currentUser.value)
     }
 
-    fun passCurrentProfile() {
-        if (_currentProfileIndex.value < _dailyProfiles.value.size) {
-            _currentProfileIndex.value += 1
-        }
-    }
-
-    fun likeCurrentProfile(candidate: UserProfile, comment: String? = null) {
-        if (candidate.id == "c1" || candidate.id == "c2") {
-            val newMatch = MatchItem(
-                id = "match_${UUID.randomUUID()}",
-                matchedUser = candidate,
-                matchedAt = "Just now",
-                lastMessage = comment?.takeIf { it.isNotBlank() } ?: "Matched with you!",
-                lastMessageTime = "Now",
-                unread = true
-            )
-            _matches.value = listOf(newMatch) + _matches.value
-            _matchCelebration.value = candidate
-        }
-        _currentProfileIndex.value += 1
-    }
-
     fun dismissCelebration() {
         _matchCelebration.value = null
     }
@@ -532,11 +546,23 @@ class MarryMatchRepository {
         _chatMessages.value = _chatMessages.value + (matchId to updated)
     }
 
+    /** Removes the match for both people (the server deletes the chat with it). */
     fun unmatch(matchId: String) {
         _matches.value = _matches.value.filter { it.id != matchId }
         val updatedMap = _chatMessages.value.toMutableMap()
         updatedMap.remove(matchId)
         _chatMessages.value = updatedMap
+
+        val api = _discovery ?: return
+        if (!isRealUserId(matchId)) return
+        repositoryScope.launch {
+            try {
+                api.unmatch(matchId)
+            } catch (e: Throwable) {
+                Log.e("MarryMatchRepository", "Unmatch failed: ${e.message}", e)
+                loadMatches()  // show the match again if the server still has it
+            }
+        }
     }
 
     /**

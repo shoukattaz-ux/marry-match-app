@@ -1,21 +1,56 @@
 package com.example
 
+import com.example.data.DailySet
+import com.example.data.DiscoveryApi
+import com.example.data.DiscoveryPrefs
+import com.example.data.LikeResult
 import com.example.data.MarryMatchRepository
-import com.example.data.SampleDataProvider
+import com.example.data.MatchSummary
 import com.example.model.UserProfile
-import com.example.ui.viewmodel.MatchingFilterState
+import com.example.ui.viewmodel.LikeTarget
 import com.example.ui.viewmodel.MatchingViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+
+/** Server stand-in: records calls and answers like the Supabase functions would. */
+private class FakeDiscoveryApi(
+    var set: DailySet,
+    val mutualWith: Set<String> = emptySet(),
+    var failNextAction: Boolean = false
+) : DiscoveryApi {
+    val likes = mutableListOf<Triple<String, LikeTarget, String?>>()
+    val passes = mutableListOf<String>()
+    var savedPrefs: DiscoveryPrefs? = null
+
+    override suspend fun getDailySet() = set
+    override suspend fun like(toUserId: String, targetType: String?, targetId: String?, comment: String?): LikeResult {
+        if (failNextAction) { failNextAction = false; throw IllegalStateException("offline") }
+        likes += Triple(toUserId, LikeTarget(targetType, targetId), comment)
+        return LikeResult(matched = toUserId in mutualWith, matchId = if (toUserId in mutualWith) "m-$toUserId" else null)
+    }
+    override suspend fun pass(toUserId: String) {
+        if (failNextAction) { failNextAction = false; throw IllegalStateException("offline") }
+        passes += toUserId
+    }
+    override suspend fun getMatches(): List<MatchSummary> = emptyList()
+    override suspend fun receivedLikesCount() = 0
+    override suspend fun loadPrefs() = DiscoveryPrefs()
+    override suspend fun savePrefs(prefs: DiscoveryPrefs) { savedPrefs = prefs }
+    override suspend fun unmatch(matchId: String) {}
+}
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -23,158 +58,112 @@ import org.robolectric.annotation.Config
 class MatchingViewModelTest {
 
     private lateinit var repository: MarryMatchRepository
-    private lateinit var viewModel: MatchingViewModel
+
+    private val anna = UserProfile(id = "a", displayName = "Anna", age = 29, region = "Bayern", marriageTimeline = "1_2y", languages = listOf("German"), selfieVerified = true)
+    private val sophie = UserProfile(id = "s", displayName = "Sophie", age = 34, region = "Berlin", marriageTimeline = "2_5y", languages = listOf("English"))
+    private val lena = UserProfile(id = "l", displayName = "Lena", age = 41, region = "Bayern", marriageTimeline = "1_2y", languages = listOf("German", "Turkish"))
 
     @Before
     fun setup() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
         repository = MarryMatchRepository()
-        viewModel = MatchingViewModel(repository)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
+    private fun viewModel(api: FakeDiscoveryApi) = MatchingViewModel(repository, api)
+
+    @Test
+    fun loadsTodaysSetInServerOrder() {
+        val vm = viewModel(FakeDiscoveryApi(DailySet(total = 10, profiles = listOf(anna, sophie, lena))))
+        val state = vm.uiState.value
+        assertFalse(state.loading)
+        assertEquals(10, state.total)
+        assertEquals("a", state.current?.id)
+        assertEquals(3, state.visible.size)
     }
 
     @Test
-    fun testInitialCurationPopulatesProfiles() {
-        val state = viewModel.uiState.value
-        assertFalse("Curated profiles should not be empty", state.curatedProfiles.isEmpty())
-        assertTrue("Total evaluated candidates should be greater than 0", state.curationProgress.totalEvaluated > 0)
-        assertNotNull("Current profile should not be null initially", viewModel.getCurrentProfile())
+    fun likeAndPassMoveToTheNextPerson() {
+        val api = FakeDiscoveryApi(DailySet(3, listOf(anna, sophie, lena)))
+        val vm = viewModel(api)
+        vm.like()
+        assertEquals("s", vm.uiState.value.current?.id)
+        vm.pass()
+        assertEquals("l", vm.uiState.value.current?.id)
+        assertEquals(listOf("a"), api.likes.map { it.first })
+        assertEquals(listOf("s"), api.passes)
     }
 
     @Test
-    fun testBlockedProfileLeavesTodaysSetWithoutRestartingIt() {
-        org.robolectric.shadows.ShadowLooper.idleMainLooper()
-        val before = viewModel.uiState.value.curatedProfiles
-        val first = before.first()
-        viewModel.passCurrentProfile() // now looking at the second profile
-        val second = viewModel.uiState.value.curatedProfiles[1]
-
-        repository.blockUser(first.id)
-        org.robolectric.shadows.ShadowLooper.idleMainLooper()
-
-        val after = viewModel.uiState.value
-        assertTrue(after.curatedProfiles.none { it.id == first.id })
-        assertEquals("Still showing the same person", second.id, after.curatedProfiles[after.currentIndex].id)
+    fun likeOnAPromptSendsTargetAndComment() {
+        val api = FakeDiscoveryApi(DailySet(1, listOf(anna)))
+        val vm = viewModel(api)
+        vm.like(LikeTarget("prompt", "prompt-1", "My ideal Sunday is..."), "Same for me!")
+        val (to, target, comment) = api.likes.single()
+        assertEquals("a", to)
+        assertEquals("prompt", target.type)
+        assertEquals("prompt-1", target.id)
+        assertEquals("Same for me!", comment)
+        assertTrue(vm.uiState.value.doneForToday)
     }
 
     @Test
-    fun testFilterByAgeRange() {
-        val candidates = SampleDataProvider.getDailyProfiles()
-        val currentUser = repository.currentUser.value
-
-        // Filter for age between 25 and 28
-        val filters = MatchingFilterState(
-            minAge = 25,
-            maxAge = 28,
-            germanyOnly = false
-        )
-        val filtered = viewModel.filterAndRankCandidates(candidates, filters, currentUser)
-
-        assertFalse("Filtered list should not be empty", filtered.isEmpty())
-        assertTrue("All candidates must be between 25 and 28", filtered.all { it.age in 25..28 })
+    fun mutualLikeShowsTheMatchCelebration() {
+        val vm = viewModel(FakeDiscoveryApi(DailySet(2, listOf(anna, sophie)), mutualWith = setOf("a")))
+        vm.like()
+        assertEquals("a", repository.matchCelebration.value?.id)
     }
 
     @Test
-    fun testFilterByLocationStrictlyGermany() {
-        val candidates = SampleDataProvider.getDailyProfiles()
-        val currentUser = repository.currentUser.value
-
-        // Strictly Germany filter
-        val filtersGermany = MatchingFilterState(
-            minAge = 18,
-            maxAge = 50,
-            germanyOnly = true
-        )
-        val filteredGermany = viewModel.filterAndRankCandidates(candidates, filtersGermany, currentUser)
-
-        // Make sure foreign candidate (e.g. c7_foreign with countryOk = false in Paris) is excluded
-        assertTrue("All candidates must be within Germany", filteredGermany.all { it.countryOk })
-        assertFalse("Foreign candidate should be filtered out", filteredGermany.any { it.id == "c7_foreign" })
-
-        // When Germany only is false, foreign candidates are allowed
-        val filtersWorldwide = MatchingFilterState(
-            minAge = 18,
-            maxAge = 50,
-            germanyOnly = false
-        )
-        val filteredWorldwide = viewModel.filterAndRankCandidates(candidates, filtersWorldwide, currentUser)
-        assertTrue("Foreign candidate allowed when germanyOnly is false", filteredWorldwide.any { it.id == "c7_foreign" })
+    fun oneSidedLikeDoesNotCelebrate() {
+        val vm = viewModel(FakeDiscoveryApi(DailySet(2, listOf(anna, sophie))))
+        vm.like()
+        assertNull(repository.matchCelebration.value)
     }
 
     @Test
-    fun testFilterBySpecificGermanRegion() {
-        val candidates = SampleDataProvider.getDailyProfiles()
-        val currentUser = repository.currentUser.value
-
-        // Filter strictly for Bayern
-        val bayernFilters = MatchingFilterState(
-            minAge = 18,
-            maxAge = 50,
-            germanyOnly = true,
-            selectedRegion = "Bayern"
-        )
-        val bayernProfiles = viewModel.filterAndRankCandidates(candidates, bayernFilters, currentUser)
-
-        assertFalse("Bayern profiles should be found", bayernProfiles.isEmpty())
-        assertTrue("All filtered profiles must be from Bayern", bayernProfiles.all { it.region.equals("Bayern", ignoreCase = true) })
+    fun failedActionKeepsThePersonAndShowsAnError() {
+        val api = FakeDiscoveryApi(DailySet(2, listOf(anna, sophie)), failNextAction = true)
+        val vm = viewModel(api)
+        vm.like()
+        assertEquals("a", vm.uiState.value.current?.id)
+        assertEquals("discover_action_failed", vm.uiState.value.errorKey)
+        assertFalse(vm.uiState.value.sending)
     }
 
     @Test
-    fun testFilterByInterests() {
-        val candidates = SampleDataProvider.getDailyProfiles()
-        val currentUser = repository.currentUser.value
-
-        // Filter by Classical Music interest
-        val interestFilters = MatchingFilterState(
-            minAge = 18,
-            maxAge = 50,
-            selectedInterests = setOf("Classical Music")
-        )
-        val musicProfiles = viewModel.filterAndRankCandidates(candidates, interestFilters, currentUser)
-
-        assertFalse("Profiles matching Classical Music should be found", musicProfiles.isEmpty())
-        assertTrue("Every profile must contain Classical Music", musicProfiles.all { candidate ->
-            candidate.interests.any { it.contains("Classical Music", ignoreCase = true) }
-        })
+    fun filtersHideTodaysPeopleAndAreSaved() {
+        val api = FakeDiscoveryApi(DailySet(3, listOf(anna, sophie, lena)))
+        val vm = viewModel(api)
+        val prefs = DiscoveryPrefs(minAge = 25, maxAge = 40, region = "Bayern")
+        vm.applyPrefs(prefs)
+        assertEquals(listOf("a"), vm.uiState.value.visible.map { it.id })
+        assertEquals(prefs, api.savedPrefs)
     }
 
     @Test
-    fun testDailyCurationRankingPrioritizesSharedInterests() {
-        val candidates = SampleDataProvider.getDailyProfiles()
-        val currentUser = repository.currentUser.value.copy(
-            interests = listOf("Alps Hiking", "Baking & Cooking")
-        )
-
-        val filters = MatchingFilterState(
-            minAge = 18,
-            maxAge = 50,
-            germanyOnly = true
-        )
-        val ranked = viewModel.filterAndRankCandidates(candidates, filters, currentUser)
-
-        assertFalse(ranked.isEmpty())
-        val topProfile = ranked.first()
-
-        // Top profile should have a high curation score
-        val topScore = viewModel.calculateCurationScore(topProfile, currentUser, filters)
-        assertTrue("Top score should be high (>= 70)", topScore >= 70)
+    fun verifiedTimelineAndLanguageFilters() {
+        assertTrue(DiscoveryPrefs(verifiedOnly = true).accepts(anna))
+        assertFalse(DiscoveryPrefs(verifiedOnly = true).accepts(sophie))
+        assertFalse(DiscoveryPrefs(timelines = setOf("within_1y")).accepts(anna))
+        assertTrue(DiscoveryPrefs(languages = setOf("Turkish")).accepts(lena))
+        assertFalse(DiscoveryPrefs(languages = setOf("Turkish")).accepts(anna))
     }
 
     @Test
-    fun testLikeAndPassAdvanceProfile() {
-        val initialIdx = viewModel.uiState.value.currentIndex
-        viewModel.passCurrentProfile()
-        assertEquals("Index should advance after pass", initialIdx + 1, viewModel.uiState.value.currentIndex)
-
-        viewModel.likeCurrentProfile("Great profile!")
-        assertEquals("Index should advance after like", initialIdx + 2, viewModel.uiState.value.currentIndex)
+    fun blockedPersonLeavesTheSetImmediately() {
+        val vm = viewModel(FakeDiscoveryApi(DailySet(3, listOf(anna, sophie, lena))))
+        repository.blockUser("s")
+        assertEquals(listOf("a", "l"), vm.uiState.value.visible.map { it.id })
     }
 
     @Test
-    fun testSimulateDailyCurationSync() {
-        viewModel.simulateDailyCuration(targetBatchSize = 5, animated = false)
-        val state = viewModel.uiState.value
-        assertEquals("Current index resets on new curation", 0, state.currentIndex)
-        assertTrue("Curated profiles batch count should be at most 5", state.curatedProfiles.size <= 5)
-        assertEquals("Curation step should be complete (step 3)", 3, state.curationProgress.step)
-        assertFalse("isCurating should be false when completed", state.curationProgress.isCurating)
+    fun emptySetMeansDoneForToday() {
+        val vm = viewModel(FakeDiscoveryApi(DailySet(0, emptyList())))
+        assertTrue(vm.uiState.value.doneForToday)
     }
 }
