@@ -25,7 +25,8 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
 sealed class LocationGateOutcome {
-    data object Allowed : LocationGateOutcome()
+    /** [signupPass] is a one-time pass returned before sign-up; null for signed-in checks. */
+    data class Allowed(val signupPass: String? = null) : LocationGateOutcome()
     data class NotAllowed(val message: String) : LocationGateOutcome()
     data class PermissionDenied(val message: String) : LocationGateOutcome()
     data class NetworkError(val message: String) : LocationGateOutcome()
@@ -185,21 +186,27 @@ object LocationGateService {
                         return@withContext LocationGateOutcome.NetworkError("Server returned code ${response.code}")
                     }
 
-                    val json = JSONObject(bodyString)
-                    val allowed = json.optBoolean("allowed", false)
-                    val message = json.optString("message", "MarryMatch is not available in your area yet.")
-
-                    if (allowed) {
-                        LocationGateOutcome.Allowed
-                    } else {
-                        LocationGateOutcome.NotAllowed(message)
-                    }
+                    parseGateResponse(bodyString)
                 }
             } catch (e: IOException) {
                 LocationGateOutcome.NetworkError("Network connection failure: ${e.message}")
             } catch (e: Throwable) {
                 LocationGateOutcome.NetworkError("Unexpected error during verification: ${e.message}")
             }
+        }
+    }
+
+    /** Turns the check-germany JSON response into an outcome. */
+    fun parseGateResponse(body: String): LocationGateOutcome {
+        val json = JSONObject(body)
+        return if (json.optBoolean("allowed", false)) {
+            LocationGateOutcome.Allowed(
+                signupPass = json.optString("signup_pass", "").takeIf { it.isNotBlank() }
+            )
+        } else {
+            LocationGateOutcome.NotAllowed(
+                json.optString("message", "MarryMatch is not available in your area yet.")
+            )
         }
     }
 }

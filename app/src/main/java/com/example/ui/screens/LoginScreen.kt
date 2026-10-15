@@ -196,12 +196,7 @@ fun LoginScreen(
                                     lower.contains("email not confirmed") || lower.contains("unconfirmed") -> {
                                         Localization.t("email_not_confirmed", lang)
                                     }
-                                    lower.contains("unknownhostexception") || lower.contains("failed to connect") || lower.contains("connectexception") || lower.contains("sockettimeoutexception") -> {
-                                        Localization.t("network_error", lang)
-                                    }
-                                    else -> {
-                                        error.localizedMessage?.takeIf { it.isNotBlank() } ?: Localization.t("invalid_credentials", lang)
-                                    }
+                                    else -> friendlyAuthError(error, lang, "login_failed")
                                 }
                             }
                         )
@@ -325,7 +320,7 @@ fun LoginScreen(
                                     resetSuccessMessage = true
                                 },
                                 onFailure = { e ->
-                                    resetError = e.localizedMessage ?: Localization.t("network_error", lang)
+                                    resetError = friendlyAuthError(e, lang, "reset_failed")
                                 }
                             )
                         }

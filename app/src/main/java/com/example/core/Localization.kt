@@ -24,7 +24,7 @@ object Localization {
         "password" to "Password (min 8 chars, 1 number)",
         "birth_date" to "Date of Birth (18+ only)",
         "age_requirement_error" to "You must be at least 18 years old to join MarryMatch.",
-        "agree_terms_privacy" to "I accept the Terms of Service and Privacy Policy.",
+        "agree_terms_privacy" to "I accept the Terms of Service, the Privacy Policy and the Code of Conduct.",
         "terms_link" to "Terms of Service",
         "privacy_link" to "Privacy Policy",
         "code_of_conduct_link" to "Code of Conduct",
@@ -139,7 +139,17 @@ object Localization {
         "birth_month" to "Month (MM)",
         "birth_year_full" to "Year (YYYY)",
         "birth_date_invalid" to "Please enter a valid date of birth.",
-        "under_18_blocked" to "You must be at least 18 years old to join MarryMatch."
+        "under_18_blocked" to "You must be at least 18 years old to join MarryMatch.",
+        "resend_email" to "Resend confirmation email",
+        "resend_email_wait" to "Resend email in %d s",
+        "resend_email_sent" to "We sent a new confirmation email.",
+        "open_settings" to "Open Settings",
+        "email_disposable" to "Please use a permanent email address. Temporary email services are not accepted.",
+        "signup_location_expired" to "Your location check has expired. Please verify your location again.",
+        "signup_failed" to "Sign-up could not be completed. Please try again.",
+        "login_failed" to "Log-in failed. Please try again.",
+        "reset_failed" to "The reset email could not be sent. Please try again.",
+        "rate_limited" to "Too many attempts. Please wait a moment and try again."
     )
 
     private val deStrings = mapOf(
@@ -154,7 +164,7 @@ object Localization {
         "password" to "Passwort (mind. 8 Zeichen, 1 Zahl)",
         "birth_date" to "Geburtsdatum (nur ab 18 Jahren)",
         "age_requirement_error" to "Sie müssen mindestens 18 Jahre alt sein, um MarryMatch beizutreten.",
-        "agree_terms_privacy" to "Ich akzeptiere die Nutzungsbedingungen und die Datenschutzerklärung.",
+        "agree_terms_privacy" to "Ich akzeptiere die Nutzungsbedingungen, die Datenschutzerklärung und den Verhaltenskodex.",
         "terms_link" to "Nutzungsbedingungen",
         "privacy_link" to "Datenschutzerklärung",
         "code_of_conduct_link" to "Verhaltenskodex",
@@ -269,6 +279,16 @@ object Localization {
         "birth_month" to "Monat (MM)",
         "birth_year_full" to "Jahr (JJJJ)",
         "birth_date_invalid" to "Bitte geben Sie ein gültiges Geburtsdatum ein.",
-        "under_18_blocked" to "Sie müssen mindestens 18 Jahre alt sein, um MarryMatch beizutreten."
+        "under_18_blocked" to "Sie müssen mindestens 18 Jahre alt sein, um MarryMatch beizutreten.",
+        "resend_email" to "Bestätigungs-E-Mail erneut senden",
+        "resend_email_wait" to "Erneut senden in %d s",
+        "resend_email_sent" to "Wir haben eine neue Bestätigungs-E-Mail gesendet.",
+        "open_settings" to "Einstellungen öffnen",
+        "email_disposable" to "Bitte verwenden Sie eine dauerhafte E-Mail-Adresse. Wegwerf-E-Mail-Dienste werden nicht akzeptiert.",
+        "signup_location_expired" to "Ihre Standortprüfung ist abgelaufen. Bitte prüfen Sie Ihren Standort erneut.",
+        "signup_failed" to "Die Registrierung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
+        "login_failed" to "Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.",
+        "reset_failed" to "Die E-Mail zum Zurücksetzen konnte nicht gesendet werden. Bitte versuchen Sie es erneut.",
+        "rate_limited" to "Zu viele Versuche. Bitte warten Sie einen Moment und versuchen Sie es erneut."
     )
 }

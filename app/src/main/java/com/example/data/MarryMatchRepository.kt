@@ -10,16 +10,23 @@ import com.example.model.UserProfile
 import com.example.model.VerificationRequest
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.util.UUID
 
 enum class AuthState {
@@ -32,6 +39,14 @@ enum class AuthState {
     ONBOARDING,
     LOGGED_IN
 }
+
+/** Sign-up needs a fresh pass from the location check; the user must verify their location again. */
+class SignupPassRequiredException : IllegalStateException("A fresh location check is required before sign-up.")
+
+@Serializable
+private data class UserStatusRow(
+    @SerialName("country_ok") val countryOk: Boolean = false
+)
 
 class MarryMatchRepository {
 
@@ -52,6 +67,10 @@ class MarryMatchRepository {
 
     private val _isPostLoginLocationGate = MutableStateFlow(false)
     val isPostLoginLocationGate: StateFlow<Boolean> = _isPostLoginLocationGate.asStateFlow()
+
+    // One-time pass from check-germany, required by the server to create an account.
+    private var signupPass: String? = null
+    private var signupPassIssuedAtMs: Long = 0L
 
     // Default current user is an empty, unauthenticated user with isAdmin = false
     private val _currentUser = MutableStateFlow(createEmptyUser())
@@ -163,7 +182,7 @@ class MarryMatchRepository {
                     isAdmin = false,
                     onboardingDone = true
                 )
-                _authState.value = AuthState.LOGGED_IN
+                routeAfterLogin(client, user.id)
             } else {
                 _authState.value = AuthState.WELCOME
             }
@@ -182,13 +201,29 @@ class MarryMatchRepository {
         val client = _supabase ?: return Result.failure(
             IllegalStateException("Supabase is not configured. Please add SUPABASE_URL and SUPABASE_ANON_KEY.")
         )
+        val pass = signupPass
+        if (pass == null || System.currentTimeMillis() - signupPassIssuedAtMs > SIGNUP_PASS_MAX_AGE_MS) {
+            signupPass = null
+            return Result.failure(SignupPassRequiredException())
+        }
         return try {
+            // The server checks every value below again (handle_new_user trigger) and
+            // refuses the account if the pass, age, email domain or consents are not valid.
             client.auth.signUpWith(Email) {
                 this.email = email.trim()
                 this.password = password.trim()
+                data = buildJsonObject {
+                    put("signup_pass", pass)
+                    put("birth_date", birthDate)
+                    put("terms_version", AppConfig.TERMS_VERSION)
+                    put("privacy_version", AppConfig.PRIVACY_VERSION)
+                    put("conduct_version", AppConfig.CONDUCT_VERSION)
+                    put("location_version", AppConfig.LOCATION_NOTICE_VERSION)
+                }
             }
+            signupPass = null
             // Retain user registration data locally (still unverified until email confirmation)
-            val y = birthDate.split("-").firstOrNull()?.toIntOrNull() ?: (2026 - age)
+            val y = birthDate.split("-").firstOrNull()?.toIntOrNull() ?: (java.time.LocalDate.now().year - age)
             _currentUser.value = _currentUser.value.copy(
                 email = email.trim(),
                 birthDate = birthDate,
@@ -201,7 +236,53 @@ class MarryMatchRepository {
             Result.success(Unit)
         } catch (e: Throwable) {
             Log.e("MarryMatchRepository", "Supabase signUpWith failed: ${e.message}", e)
+            // A refusal by the sign-up trigger arrives as a generic database error. The app already
+            // checked age, email domain and consents, so the likely cause is the pass: ask for a new one.
+            val msg = e.message.orEmpty().lowercase()
+            if (msg.contains("database error saving new user") || msg.contains("unexpected_failure")) {
+                signupPass = null
+                Result.failure(SignupPassRequiredException())
+            } else {
+                Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun resendSignupEmail(email: String): Result<Unit> {
+        val client = _supabase ?: return Result.failure(
+            IllegalStateException("Supabase is not configured.")
+        )
+        return try {
+            client.auth.resendEmail(OtpType.Email.SIGNUP, email.trim())
+            Result.success(Unit)
+        } catch (e: Throwable) {
+            Log.e("MarryMatchRepository", "Supabase resend email failed: ${e.message}", e)
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Sends the user home, or to the location check when the server has no Germany check on
+     * record yet (accounts created before the sign-up pass existed). Travellers who passed at
+     * sign-up are never asked again.
+     */
+    private suspend fun routeAfterLogin(client: SupabaseClient, userId: String) {
+        val countryOk = try {
+            client.from("user_status")
+                .select(columns = Columns.list("country_ok")) { filter { eq("user_id", userId) } }
+                .decodeSingleOrNull<UserStatusRow>()
+                ?.countryOk ?: false
+        } catch (e: Throwable) {
+            // The server enforces country_ok on every write anyway, so a failed read must not lock the user out.
+            Log.w("MarryMatchRepository", "Could not read user_status: ${e.message}")
+            true
+        }
+        if (countryOk) {
+            _isPostLoginLocationGate.value = false
+            _authState.value = AuthState.LOGGED_IN
+        } else {
+            _isPostLoginLocationGate.value = true
+            _authState.value = AuthState.LOCATION_GATE
         }
     }
 
@@ -224,8 +305,7 @@ class MarryMatchRepository {
                     isAdmin = false,
                     onboardingDone = true
                 )
-                _isPostLoginLocationGate.value = true
-                _authState.value = AuthState.LOCATION_GATE
+                routeAfterLogin(client, user.id)
                 Result.success(Unit)
             } else {
                 Result.failure(IllegalStateException("No valid user session returned by Supabase."))
@@ -274,14 +354,19 @@ class MarryMatchRepository {
         _isPostLoginLocationGate.value = value
     }
 
-    fun onLocationGatePassed() {
+    fun onLocationGatePassed(signupPass: String? = null) {
         if (_isPostLoginLocationGate.value) {
             _isPostLoginLocationGate.value = false
             _authState.value = AuthState.LOGGED_IN
         } else {
+            this.signupPass = signupPass
+            signupPassIssuedAtMs = System.currentTimeMillis()
             _authState.value = AuthState.SIGNUP
         }
     }
+
+    fun hasValidSignupPass(): Boolean =
+        signupPass != null && System.currentTimeMillis() - signupPassIssuedAtMs <= SIGNUP_PASS_MAX_AGE_MS
 
     fun setIncognito(enabled: Boolean) { _isIncognito.value = enabled }
     fun setVisibleOnlyToVerified(enabled: Boolean) { _visibleOnlyToVerified.value = enabled }
@@ -460,6 +545,9 @@ class MarryMatchRepository {
     }
 
     companion object {
+        // The server accepts a pass for 15 minutes; stop one minute early to allow for clock drift.
+        private const val SIGNUP_PASS_MAX_AGE_MS = 14 * 60 * 1000L
+
         fun createEmptyUser(): UserProfile = UserProfile(
             id = "",
             email = "",

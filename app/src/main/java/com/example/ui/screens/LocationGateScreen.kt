@@ -1,7 +1,10 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -74,7 +77,12 @@ fun LocationGateScreen(
 
             when (outcome) {
                 is LocationGateOutcome.Allowed -> {
-                    repository.onLocationGatePassed()
+                    if (!isPostLogin && outcome.signupPass == null) {
+                        // Sign-up is impossible without a pass, so treat this like a server error.
+                        errorMessage = Localization.t("location_network_error", lang)
+                    } else {
+                        repository.onLocationGatePassed(outcome.signupPass)
+                    }
                 }
                 is LocationGateOutcome.NotAllowed -> {
                     repository.setAuthState(AuthState.LOCATION_REJECTED)
@@ -284,6 +292,19 @@ fun LocationGateScreen(
                             permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                         },
                         testTag = "location_gate_grant_permission_btn"
+                    )
+                    // After a permanent denial Android no longer shows the dialog; only Settings can grant it.
+                    MarrySecondaryButton(
+                        text = Localization.t("open_settings", lang),
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null)
+                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        },
+                        testTag = "location_gate_open_settings_btn"
                     )
                 } else if (errorMessage != null) {
                     MarryPrimaryButton(

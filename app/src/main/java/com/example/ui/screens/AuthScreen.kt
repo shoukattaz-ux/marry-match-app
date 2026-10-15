@@ -27,11 +27,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.AppLanguage
+import com.example.core.DisposableEmail
 import com.example.core.Localization
 import com.example.data.AuthState
 import com.example.data.MarryMatchRepository
+import com.example.data.SignupPassRequiredException
 import com.example.ui.components.MarryPrimaryButton
+import com.example.ui.components.MarrySecondaryButton
 import com.example.ui.theme.extendedColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.Period
@@ -57,16 +61,29 @@ fun SignUpScreen(
     var agreedToTerms by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    // Set when the location pass expired or was refused, so the user must run the check again
+    var needsLocationCheck by remember { mutableStateOf(false) }
 
     // State for showing "Check your inbox" after real Supabase registration
     var registrationSuccessEmail by remember { mutableStateOf<String?>(null) }
+    var resendSecondsLeft by remember { mutableIntStateOf(RESEND_COOLDOWN_SECONDS) }
+    var resendNotice by remember { mutableStateOf<String?>(null) }
+    var isResending by remember { mutableStateOf(false) }
+
+    // Count down the resend cooldown (once per minute) while the "check your inbox" screen is shown
+    LaunchedEffect(registrationSuccessEmail, resendSecondsLeft) {
+        if (registrationSuccessEmail != null && resendSecondsLeft > 0) {
+            delay(1000)
+            resendSecondsLeft -= 1
+        }
+    }
 
     // Exact date of birth validation and age calculation
     val exactAge: Int? = remember(birthDay, birthMonth, birthYear) {
         val d = birthDay.toIntOrNull()
         val m = birthMonth.toIntOrNull()
         val y = birthYear.toIntOrNull()
-        if (d != null && m != null && y != null && y in 1900..2026 && m in 1..12 && d in 1..31) {
+        if (d != null && m != null && y != null && y in 1900..LocalDate.now().year && m in 1..12 && d in 1..31) {
             try {
                 val birthDate = LocalDate.of(y, m, d)
                 val today = LocalDate.now()
@@ -157,6 +174,42 @@ fun SignUpScreen(
                     },
                     testTag = "check_inbox_login_btn"
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                MarrySecondaryButton(
+                    text = if (resendSecondsLeft > 0)
+                        String.format(Localization.t("resend_email_wait", lang), resendSecondsLeft)
+                    else
+                        Localization.t("resend_email", lang),
+                    onClick = {
+                        val target = registrationSuccessEmail ?: return@MarrySecondaryButton
+                        isResending = true
+                        resendNotice = null
+                        coroutineScope.launch {
+                            val result = repository.resendSignupEmail(target)
+                            isResending = false
+                            resendNotice = if (result.isSuccess) {
+                                Localization.t("resend_email_sent", lang)
+                            } else {
+                                friendlyAuthError(result.exceptionOrNull(), lang, "signup_failed")
+                            }
+                            resendSecondsLeft = RESEND_COOLDOWN_SECONDS
+                        }
+                    },
+                    enabled = resendSecondsLeft == 0 && !isResending,
+                    testTag = "check_inbox_resend_btn"
+                )
+
+                resendNotice?.let { notice ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = notice,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
         } else {
             Column(
@@ -363,6 +416,10 @@ fun SignUpScreen(
                             errorMessage = if (lang == AppLanguage.EN) "Please enter a valid email address." else "Bitte geben Sie eine gültige E-Mail-Adresse ein."
                             return@Button
                         }
+                        if (DisposableEmail.isDisposable(trimmedEmail)) {
+                            errorMessage = Localization.t("email_disposable", lang)
+                            return@Button
+                        }
                         if (trimmedPassword.length < 8 || !trimmedPassword.any { it.isDigit() }) {
                             errorMessage = if (lang == AppLanguage.EN) "Password must be at least 8 characters and include a number." else "Das Passwort muss mindestens 8 Zeichen und eine Ziffer enthalten."
                             return@Button
@@ -403,24 +460,19 @@ fun SignUpScreen(
                                     registrationSuccessEmail = trimmedEmail
                                 },
                                 onFailure = { error ->
-                                    val msg = error.message ?: ""
-                                    val lower = msg.lowercase()
+                                    val lower = (error.message ?: "").lowercase()
                                     errorMessage = when {
+                                        error is SignupPassRequiredException -> {
+                                            needsLocationCheck = true
+                                            Localization.t("signup_location_expired", lang)
+                                        }
                                         lower.contains("already registered") || lower.contains("user already exists") || lower.contains("already exists") -> {
                                             if (lang == AppLanguage.EN) "An account with this email already exists." else "Ein Konto mit dieser E-Mail existiert bereits."
                                         }
                                         lower.contains("password") && (lower.contains("weak") || lower.contains("short") || lower.contains("least")) -> {
                                             if (lang == AppLanguage.EN) "Password is too weak. Please choose a stronger password." else "Das Passwort ist zu schwach. Bitte wählen Sie ein sichereres Passwort."
                                         }
-                                        lower.contains("rate limit") -> {
-                                            if (lang == AppLanguage.EN) "Too many attempts. Please try again in a few moments." else "Zu viele Versuche. Bitte warten Sie einen Moment."
-                                        }
-                                        lower.contains("unknownhostexception") || lower.contains("failed to connect") || lower.contains("connectexception") || lower.contains("sockettimeoutexception") -> {
-                                            Localization.t("network_error", lang)
-                                        }
-                                        else -> {
-                                            error.localizedMessage?.takeIf { it.isNotBlank() } ?: (if (lang == AppLanguage.EN) "Registration failed. Please try again." else "Registrierung fehlgeschlagen.")
-                                        }
+                                        else -> friendlyAuthError(error, lang, "signup_failed")
                                     }
                                 }
                             )
@@ -451,6 +503,14 @@ fun SignUpScreen(
                     }
                 }
 
+                if (needsLocationCheck) {
+                    MarrySecondaryButton(
+                        text = Localization.t("location_gate_button", lang),
+                        onClick = { repository.setAuthState(AuthState.LOCATION_GATE) },
+                        testTag = "signup_recheck_location_btn"
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
@@ -463,5 +523,23 @@ fun SignUpScreen(
                 }
             }
         }
+    }
+}
+
+private const val RESEND_COOLDOWN_SECONDS = 60
+
+/**
+ * Maps an auth error to a translated message. Raw server text is never shown to the user.
+ * [fallbackKey] is the localization key used when no specific message fits.
+ */
+internal fun friendlyAuthError(error: Throwable?, lang: AppLanguage, fallbackKey: String): String {
+    val lower = (error?.message ?: "").lowercase() + " " + (error?.javaClass?.simpleName ?: "").lowercase()
+    return when {
+        lower.contains("rate limit") || lower.contains("too many") || lower.contains("over_email_send_rate_limit") ->
+            Localization.t("rate_limited", lang)
+        lower.contains("unknownhost") || lower.contains("failed to connect") || lower.contains("connectexception") ||
+            lower.contains("sockettimeout") || lower.contains("httprequestexception") ->
+            Localization.t("network_error", lang)
+        else -> Localization.t(fallbackKey, lang)
     }
 }

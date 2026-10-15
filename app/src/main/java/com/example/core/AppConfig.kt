@@ -46,6 +46,13 @@ object AppConfig {
     const val DAILY_PROFILE_LIMIT = 10
     const val APP_VERSION = "1.0.0 (Germany Release)"
 
+    // Versions of the texts accepted at sign-up. They are stored in the consents table,
+    // so raise a version whenever its text changes.
+    const val TERMS_VERSION = "1.0"
+    const val PRIVACY_VERSION = "1.0"
+    const val CONDUCT_VERSION = "1.0"
+    const val LOCATION_NOTICE_VERSION = "1.0"
+
     val isConfigured: Boolean
         get() = SUPABASE_URL.startsWith("https://") &&
                 !SUPABASE_URL.contains("your-project") &&

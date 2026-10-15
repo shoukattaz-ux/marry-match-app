@@ -1,8 +1,13 @@
 package com.example
 
 import com.example.core.AppConfig
+import com.example.core.DisposableEmail
+import com.example.core.LocationGateOutcome
+import com.example.core.LocationGateService
 import com.example.data.AuthState
 import com.example.data.MarryMatchRepository
+import com.example.data.SignupPassRequiredException
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -86,6 +91,49 @@ class SupabaseAuthTest {
         repository.onLocationGatePassed()
         assertEquals(AuthState.LOGGED_IN, repository.authState.value)
         assertFalse(repository.isPostLoginLocationGate.value)
+    }
+
+    @Test
+    fun testGatePassIsKeptForSignUp() {
+        assertFalse("No pass before the location check", repository.hasValidSignupPass())
+        repository.setPostLoginLocationGate(false)
+        repository.onLocationGatePassed("one-time-pass")
+        assertEquals(AuthState.SIGNUP, repository.authState.value)
+        assertTrue("Pass from check-germany must be kept for sign-up", repository.hasValidSignupPass())
+    }
+
+    @Test
+    fun testSignUpWithoutPassAsksForLocationCheck() = runBlocking {
+        val result = repository.signUpWithSupabase(
+            email = "anna@example.de",
+            password = "secret123",
+            birthDate = "1995-05-05",
+            age = 31
+        )
+        assertTrue("Sign-up without a pass must not reach the server", result.isFailure)
+        assertTrue(result.exceptionOrNull() is SignupPassRequiredException)
+    }
+
+    @Test
+    fun testParseGateResponse() {
+        val withPass = LocationGateService.parseGateResponse("""{"allowed":true,"signup_pass":"abc"}""")
+        assertEquals(LocationGateOutcome.Allowed("abc"), withPass)
+
+        val signedIn = LocationGateService.parseGateResponse("""{"allowed":true}""")
+        assertEquals(LocationGateOutcome.Allowed(null), signedIn)
+
+        val refused = LocationGateService.parseGateResponse(
+            """{"allowed":false,"message":"MarryMatch is not available in your area yet."}"""
+        )
+        assertEquals(LocationGateOutcome.NotAllowed("MarryMatch is not available in your area yet."), refused)
+    }
+
+    @Test
+    fun testDisposableEmailDomainsAreRefused() {
+        assertTrue(DisposableEmail.isDisposable("someone@mailinator.com"))
+        assertTrue(DisposableEmail.isDisposable("Someone@YOPMAIL.com "))
+        assertFalse(DisposableEmail.isDisposable("anna@gmail.com"))
+        assertFalse(DisposableEmail.isDisposable("not-an-email"))
     }
 }
 
