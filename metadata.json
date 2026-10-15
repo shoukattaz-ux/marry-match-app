@@ -1,0 +1,6 @@
+{
+  "name": "MarryMatch",
+  "description": "Verified, marriage-focused dating app for people in Germany with daily curated profiles, selfie verification, and privacy-first trust.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

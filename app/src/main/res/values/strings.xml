@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">MarryMatch</string>
+    <string name="location_gate_title">Germany Location Verification</string>
+    <string name="location_gate_desc">MarryMatch is exclusively available to people currently residing in Germany. We verify your location once to confirm eligibility under GDPR rules. We never store your exact GPS position.</string>
+    <string name="location_gate_button">Verify Location &amp; Continue</string>
+    <string name="location_not_available_title">MarryMatch is not available in your area yet.</string>
+    <string name="location_not_available_desc">We currently only accept registrations within Germany. When we expand to your country, we will let you know!</string>
+    <string name="try_again">Try again</string>
+    <string name="location_verifying">Verifying your location in Germany...</string>
+    <string name="location_permission_required">Location access is required to verify that you are currently in Germany. Please grant location permission to proceed.</string>
+    <string name="grant_location_permission">Grant Location Permission</string>
+    <string name="location_gps_error">Unable to get fresh GPS location. Please ensure location services are enabled and try again.</string>
+    <string name="location_network_error">Could not connect to server. Please check your internet connection and try again.</string>
+    <string name="location_mock_error">Mock or simulated location detected. MarryMatch requires authentic device location.</string>
+    <string name="location_gdpr_notice">GDPR Privacy Notice: Exact GPS coordinates are never stored or logged. They are discarded immediately after checking eligibility.</string>
+</resources>

@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">MarryMatch</string>
+    <string name="location_gate_title">Standortprüfung Deutschland</string>
+    <string name="location_gate_desc">MarryMatch ist ausschließlich für Personen mit aktuellem Wohnsitz in Deutschland verfügbar. Wir prüfen Ihren Standort einmalig gemäß DSGVO. Wir speichern niemals Ihre genauen GPS-Koordinaten.</string>
+    <string name="location_gate_button">Standort prüfen &amp; Fortfahren</string>
+    <string name="location_not_available_title">MarryMatch ist in Ihrer Region noch nicht verfügbar.</string>
+    <string name="location_not_available_desc">Aktuell sind Registrierungen nur innerhalb Deutschlands möglich. Sobald wir in Ihr Land expandieren, informieren wir Sie gerne!</string>
+    <string name="try_again">Erneut versuchen</string>
+    <string name="location_verifying">Standort in Deutschland wird geprüft...</string>
+    <string name="location_permission_required">Standortberechtigung ist erforderlich, um Ihren Aufenthalt in Deutschland zu prüfen. Bitte erteilen Sie die Standortberechtigung.</string>
+    <string name="grant_location_permission">Standortberechtigung erteilen</string>
+    <string name="location_gps_error">GPS-Standort konnte nicht ermittelt werden. Bitte aktivieren Sie die Standortdienste und versuchen Sie es erneut.</string>
+    <string name="location_network_error">Verbindung zum Server fehlgeschlagen. Bitte prüfen Sie Ihre Internetverbindung und versuchen Sie es erneut.</string>
+    <string name="location_mock_error">Simulierter Standort erkannt. MarryMatch erfordert den echten Gerätestandort.</string>
+    <string name="location_gdpr_notice">DSGVO-Datenschutzhinweis: Exakte GPS-Koordinaten werden niemals gespeichert oder protokolliert. Sie werden unmittelbar nach der Berechtigungsprüfung verworfen.</string>
+</resources>
