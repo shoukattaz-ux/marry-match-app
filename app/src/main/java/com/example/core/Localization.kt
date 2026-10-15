@@ -202,7 +202,16 @@ object Localization {
         "timeline_hint_later" to "Getting to know someone deeply first",
         "back" to "Back",
         "age" to "Age",
-        "delete" to "Delete"
+        "delete" to "Delete",
+        "reason_photo" to "Inappropriate photo",
+        "report_reporting" to "Reporting: %s",
+        "report_details_hint" to "Details for our moderation team (optional)",
+        "report_also_block" to "Also block this person",
+        "report_submit" to "Submit report",
+        "report_failed" to "The report could not be sent. Please check your connection and try again.",
+        "report_limit" to "You have sent many reports today. Please contact support if this is urgent.",
+        "cancel" to "Cancel",
+        "done" to "Done"
     )
 
     private val deStrings = mapOf(
@@ -395,6 +404,15 @@ object Localization {
         "timeline_hint_later" to "Erst jemanden gut kennenlernen",
         "back" to "Zurück",
         "age" to "Alter",
-        "delete" to "Löschen"
+        "delete" to "Löschen",
+        "reason_photo" to "Unangemessenes Foto",
+        "report_reporting" to "Gemeldetes Profil: %s",
+        "report_details_hint" to "Angaben für das Moderationsteam (optional)",
+        "report_also_block" to "Diese Person auch blockieren",
+        "report_submit" to "Meldung senden",
+        "report_failed" to "Die Meldung konnte nicht gesendet werden. Bitte prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+        "report_limit" to "Sie haben heute bereits viele Meldungen gesendet. Bitte kontaktieren Sie in dringenden Fällen den Support.",
+        "cancel" to "Abbrechen",
+        "done" to "Fertig"
     )
 }

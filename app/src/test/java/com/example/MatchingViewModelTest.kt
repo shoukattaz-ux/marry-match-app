@@ -40,6 +40,22 @@ class MatchingViewModelTest {
     }
 
     @Test
+    fun testBlockedProfileLeavesTodaysSetWithoutRestartingIt() {
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        val before = viewModel.uiState.value.curatedProfiles
+        val first = before.first()
+        viewModel.passCurrentProfile() // now looking at the second profile
+        val second = viewModel.uiState.value.curatedProfiles[1]
+
+        repository.blockUser(first.id)
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+
+        val after = viewModel.uiState.value
+        assertTrue(after.curatedProfiles.none { it.id == first.id })
+        assertEquals("Still showing the same person", second.id, after.curatedProfiles[after.currentIndex].id)
+    }
+
+    @Test
     fun testFilterByAgeRange() {
         val candidates = SampleDataProvider.getDailyProfiles()
         val currentUser = repository.currentUser.value

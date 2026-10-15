@@ -90,6 +90,20 @@ class MatchingViewModel(
     init {
         // Run initial curation on start
         refreshCuration(animated = false)
+        // A newly blocked person disappears from today's set without restarting it
+        viewModelScope.launch {
+            repository.blockedUserIds.collect { blocked -> hideBlocked(blocked) }
+        }
+    }
+
+    private fun hideBlocked(blocked: Set<String>) {
+        val state = _uiState.value
+        if (state.curatedProfiles.none { it.id in blocked }) return
+        val removedBeforeCurrent = state.curatedProfiles.take(state.currentIndex).count { it.id in blocked }
+        _uiState.value = state.copy(
+            curatedProfiles = state.curatedProfiles.filterNot { it.id in blocked },
+            currentIndex = state.currentIndex - removedBeforeCurrent
+        )
     }
 
     /**

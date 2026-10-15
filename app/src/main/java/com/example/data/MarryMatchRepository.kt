@@ -54,6 +54,13 @@ private data class UserStatusRow(
     @SerialName("country_ok") val countryOk: Boolean = false
 )
 
+@Serializable
+private data class BlockRow(val blocked: String)
+
+/** True for real account ids (UUIDs); the sample profiles use ids like "c1". */
+internal fun isRealUserId(id: String): Boolean =
+    runCatching { UUID.fromString(id) }.isSuccess && id.length == 36
+
 class MarryMatchRepository {
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
@@ -281,6 +288,7 @@ class MarryMatchRepository {
             Log.w("MarryMatchRepository", "Could not read user_status: ${e.message}")
             true
         }
+        loadBlockedIds(client, userId)
         if (countryOk) {
             _isPostLoginLocationGate.value = false
             routeByProfile(userId)
@@ -424,6 +432,7 @@ class MarryMatchRepository {
         }
         _isPostLoginLocationGate.value = false
         _currentUser.value = createEmptyUser()
+        _blockedUserIds.value = emptySet()
         _authState.value = AuthState.WELCOME
     }
 
@@ -530,13 +539,65 @@ class MarryMatchRepository {
         _chatMessages.value = updatedMap
     }
 
+    /**
+     * Hides the person everywhere right away and stores the block on the server. The server
+     * then hides both people from each other (profiles, photos, likes) and deletes their match.
+     */
     fun blockUser(userId: String) {
         _blockedUserIds.value = _blockedUserIds.value + userId
         _matches.value = _matches.value.filter { it.matchedUser.id != userId }
         _dailyProfiles.value = _dailyProfiles.value.filter { it.id != userId }
+
+        val client = _supabase ?: return
+        val me = _currentUser.value.id
+        if (!isRealUserId(userId) || me.isBlank()) return  // sample profiles exist only on the phone
+        repositoryScope.launch {
+            try {
+                client.from("blocks").insert(buildJsonObject {
+                    put("blocker", me)
+                    put("blocked", userId)
+                })
+            } catch (e: Throwable) {
+                // Blocking the same person twice hits the primary key; anything else is logged.
+                if (e.message?.contains("duplicate key") != true) {
+                    Log.e("MarryMatchRepository", "Saving block failed: ${e.message}", e)
+                }
+            }
+        }
     }
 
-    fun submitReport(reportedUserId: String, reportedUserName: String, reason: String, details: String) {
+    /** Loads who the user has blocked, so they stay hidden after a restart. */
+    private suspend fun loadBlockedIds(client: SupabaseClient, userId: String) {
+        try {
+            val rows = client.from("blocks")
+                .select(columns = Columns.list("blocked")) { filter { eq("blocker", userId) } }
+                .decodeList<BlockRow>()
+            _blockedUserIds.value = rows.map { it.blocked }.toSet()
+        } catch (e: Throwable) {
+            Log.w("MarryMatchRepository", "Could not load blocks: ${e.message}")
+        }
+    }
+
+    /**
+     * Sends a report to the moderation queue. [reason] is one of the values allowed by the
+     * reports table: fake, harassment, scam, underage, photo, other.
+     */
+    suspend fun submitReport(reportedUserId: String, reportedUserName: String, reason: String, details: String): Result<Unit> {
+        val client = _supabase
+        val me = _currentUser.value.id
+        if (client != null && isRealUserId(reportedUserId) && me.isNotBlank()) {
+            try {
+                client.from("reports").insert(buildJsonObject {
+                    put("reporter_id", me)
+                    put("reported_id", reportedUserId)
+                    put("reason", reason)
+                    if (details.isNotBlank()) put("details", details.trim().take(1000))
+                })
+            } catch (e: Throwable) {
+                Log.e("MarryMatchRepository", "Report failed: ${e.message}", e)
+                return Result.failure(e)
+            }
+        }
         val report = ReportItem(
             id = "rep_${UUID.randomUUID()}",
             reporterId = _currentUser.value.id,
@@ -547,6 +608,7 @@ class MarryMatchRepository {
             status = "open"
         )
         _reports.value = listOf(report) + _reports.value
+        return Result.success(Unit)
     }
 
     fun submitSelfieVerification(pose: String, photoUri: String? = null, autoApprove: Boolean = false) {

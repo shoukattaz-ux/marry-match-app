@@ -7,6 +7,7 @@ import com.example.core.LocationGateService
 import com.example.data.AuthState
 import com.example.data.MarryMatchRepository
 import com.example.data.SignupPassRequiredException
+import com.example.data.isRealUserId
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
@@ -126,6 +127,27 @@ class SupabaseAuthTest {
             """{"allowed":false,"message":"MarryMatch is not available in your area yet."}"""
         )
         assertEquals(LocationGateOutcome.NotAllowed("MarryMatch is not available in your area yet."), refused)
+    }
+
+    @Test
+    fun testOnlyRealAccountIdsGoToTheServer() {
+        assertTrue(isRealUserId("20301f7c-1eaf-4dbc-baaf-6b4210d78ccf"))
+        assertFalse("Sample profiles are not real accounts", isRealUserId("c1"))
+        assertFalse(isRealUserId(""))
+    }
+
+    @Test
+    fun testReportOnSampleProfileStaysLocal() = runBlocking {
+        val result = repository.submitReport("c1", "Anna", "fake", "")
+        assertTrue(result.isSuccess)
+        assertEquals("c1", repository.reports.value.first().reportedUserId)
+    }
+
+    @Test
+    fun testBlockHidesPersonImmediately() {
+        repository.blockUser("c1")
+        assertTrue("c1" in repository.blockedUserIds.value)
+        assertTrue(repository.dailyProfiles.value.none { it.id == "c1" })
     }
 
     @Test

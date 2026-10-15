@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +28,7 @@ import com.example.data.MarryMatchRepository
 import com.example.model.UserProfile
 import com.example.ui.components.MarryPrimaryButton
 import com.example.ui.theme.extendedColors
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -178,20 +180,19 @@ fun ReportProfileDialog(
     onDismiss: () -> Unit
 ) {
     val lang by repository.appLanguage.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
     var selectedReason by remember { mutableStateOf("fake") }
     var detailsText by remember { mutableStateOf("") }
+    var alsoBlock by remember { mutableStateOf(false) }
+    var isSending by remember { mutableStateOf(false) }
+    var errorKey by remember { mutableStateOf<String?>(null) }
     var submitted by remember { mutableStateOf(false) }
 
-    val reasons = listOf(
-        "fake" to Localization.t("reason_fake", lang),
-        "harassment" to Localization.t("reason_harassment", lang),
-        "scam" to Localization.t("reason_scam", lang),
-        "underage" to Localization.t("reason_underage", lang),
-        "other" to Localization.t("reason_other", lang)
-    )
+    // Keys match the reasons allowed by the reports table.
+    val reasons = listOf("fake", "harassment", "scam", "underage", "photo", "other")
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSending) onDismiss() },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Default.Flag, contentDescription = null, tint = MaterialTheme.colorScheme.error)
@@ -200,18 +201,22 @@ fun ReportProfileDialog(
         },
         text = {
             if (!submitted) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     Text(
-                        text = if (lang == AppLanguage.EN) "Reporting: ${userToReport.displayName} (${userToReport.city})" else "Gemeldetes Profil: ${userToReport.displayName} (${userToReport.city})",
+                        text = String.format(Localization.t("report_reporting", lang), userToReport.displayName),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
 
-                    reasons.forEach { (key, label) ->
+                    reasons.forEach { key ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clickable { selectedReason = key }
                                 .padding(vertical = 2.dp)
                         ) {
                             RadioButton(
@@ -219,21 +224,42 @@ fun ReportProfileDialog(
                                 onClick = { selectedReason = key }
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(label, style = MaterialTheme.typography.bodySmall)
+                            Text(Localization.t("reason_$key", lang), style = MaterialTheme.typography.bodySmall)
                         }
                     }
 
                     OutlinedTextField(
                         value = detailsText,
-                        onValueChange = { detailsText = it },
-                        placeholder = {
-                            Text(if (lang == AppLanguage.EN) "Additional details for our moderation team (optional)..." else "Zusätzliche Angaben für das Moderationsteam...")
-                        },
+                        onValueChange = { if (it.length <= 1000) detailsText = it },
+                        placeholder = { Text(Localization.t("report_details_hint", lang)) },
                         minLines = 2,
                         maxLines = 4,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp)
                     )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { alsoBlock = !alsoBlock }
+                    ) {
+                        Checkbox(
+                            checked = alsoBlock,
+                            onCheckedChange = { alsoBlock = it },
+                            modifier = Modifier.testTag("report_also_block")
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(Localization.t("report_also_block", lang), style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    errorKey?.let { key ->
+                        Text(
+                            Localization.t(key, lang),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             } else {
                 Column(
@@ -255,28 +281,45 @@ fun ReportProfileDialog(
             if (!submitted) {
                 Button(
                     onClick = {
-                        repository.submitReport(
-                            reportedUserId = userToReport.id,
-                            reportedUserName = userToReport.displayName,
-                            reason = selectedReason,
-                            details = detailsText
-                        )
-                        submitted = true
+                        isSending = true
+                        errorKey = null
+                        coroutineScope.launch {
+                            val result = repository.submitReport(
+                                reportedUserId = userToReport.id,
+                                reportedUserName = userToReport.displayName,
+                                reason = selectedReason,
+                                details = detailsText
+                            )
+                            isSending = false
+                            if (result.isSuccess) {
+                                if (alsoBlock) repository.blockUser(userToReport.id)
+                                submitted = true
+                            } else {
+                                val limitHit = result.exceptionOrNull()?.message?.contains("report_limit") == true
+                                errorKey = if (limitHit) "report_limit" else "report_failed"
+                            }
+                        }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    enabled = !isSending,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("report_submit_btn")
                 ) {
-                    Text("Submit Report", color = Color.White)
+                    if (isSending) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                    } else {
+                        Text(Localization.t("report_submit", lang), color = Color.White)
+                    }
                 }
             } else {
                 Button(onClick = onDismiss) {
-                    Text("Done")
+                    Text(Localization.t("done", lang))
                 }
             }
         },
         dismissButton = {
             if (!submitted) {
-                TextButton(onClick = onDismiss) {
-                    Text("Cancel")
+                TextButton(onClick = onDismiss, enabled = !isSending) {
+                    Text(Localization.t("cancel", lang))
                 }
             }
         }
