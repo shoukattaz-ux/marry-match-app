@@ -15,7 +15,8 @@ data class ChatMessage(
     val senderId: String,
     val body: String,
     val timestamp: String,
-    val isRead: Boolean = true
+    val isRead: Boolean = true,
+    val createdAt: String = ""  // server time (ISO), used for ordering
 )
 
 data class VerificationRequest(

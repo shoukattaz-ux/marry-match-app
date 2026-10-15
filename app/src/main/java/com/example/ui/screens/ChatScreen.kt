@@ -2,7 +2,9 @@ package com.example.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -37,13 +39,14 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.core.AppLanguage
 import com.example.core.Localization
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.MarryMatchRepository
+import com.example.ui.viewmodel.ChatViewModel
 import com.example.model.ChatMessage
 import com.example.model.MatchItem
 import com.example.ui.components.SafetyNoticeBanner
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.extendedColors
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,37 +58,40 @@ fun ChatScreen(
     modifier: Modifier = Modifier
 ) {
     val lang by repository.appLanguage.collectAsState()
-    val chatMap by repository.chatMessages.collectAsState()
-    val messages = chatMap[match.id] ?: emptyList()
     val user by repository.currentUser.collectAsState()
-    val sendReadReceipts by repository.sendReadReceipts.collectAsState()
+    val chatViewModel: ChatViewModel = viewModel(key = "chat_${match.id}") {
+        ChatViewModel(match.id, repository.currentUser.value.id, repository.chat)
+    }
+    val chatState by chatViewModel.state.collectAsState()
+    val messages = chatState.messages
 
     var messageInput by remember { mutableStateOf("") }
+    var lastDraft by remember { mutableStateOf("") }
+    var reportedMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     var showPrivacyInfoDialog by remember { mutableStateOf(false) }
     var showUnmatchConfirm by remember { mutableStateOf(false) }
     var showBlockConfirm by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
 
-    // Privacy-first anti-scam & external leak detector
-    val containsSuspiciousContent = remember(messageInput) {
-        val lower = messageInput.lowercase()
-        lower.contains("money") || lower.contains("geld") || lower.contains("bank") ||
-        lower.contains("iban") || lower.contains("crypto") || lower.contains("telegram") ||
-        lower.contains("whatsapp") || lower.contains("paypal") || lower.contains("+49") ||
-        lower.contains("wire") || lower.contains("überweisung") || lower.matches(Regex(".*\\d{8,}.*"))
+    // Gentle warning before sharing money talk, contact details or links early
+    val containsSuspiciousContent = remember(messageInput) { ChatSafety.looksRisky(messageInput) }
+
+    val starters = listOf(
+        Localization.t("starter_sunday", lang),
+        String.format(Localization.t("starter_city", lang), match.matchedUser.city.ifBlank { "Deutschland" }),
+        Localization.t("starter_family", lang)
+    )
+
+    // Keep the newest message in view
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(listState.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1)
     }
 
-    // Dynamic conversation starters generated from the match's prompt answers!
-    val starters = remember(match) {
-        val p = match.matchedUser.prompts
-        listOf(
-            "I saw your prompt about ${p.firstOrNull()?.promptKey ?: "marriage"}. That resonated deeply with me!",
-            "How was your week in ${match.matchedUser.city}?",
-            "What inspired your vision for family and values?"
-        )
+    // A failed send puts the text back so nothing is lost
+    LaunchedEffect(chatState.errorKey) {
+        if (chatState.errorKey != null && messageInput.isEmpty()) messageInput = lastDraft
     }
 
     Scaffold(
@@ -286,12 +292,38 @@ fun ChatScreen(
                     }
                 }
 
-                items(messages) { msg ->
+                if (chatState.loading) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        }
+                    }
+                }
+                if (chatState.loadFailed) {
+                    item {
+                        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(Localization.t("chat_load_failed", lang), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                            TextButton(onClick = chatViewModel::load) { Text(Localization.t("retry", lang)) }
+                        }
+                    }
+                }
+                items(messages, key = { it.id }) { msg ->
                     val isMe = msg.senderId == user.id
                     ChatBubble(
                         message = msg,
                         isMe = isMe,
-                        sendReadReceipts = sendReadReceipts
+                        onLongPress = if (isMe) null else ({ reportedMessage = msg })
+                    )
+                }
+            }
+
+            chatState.errorKey?.let { key ->
+                Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { chatViewModel.clearError() }) {
+                    Text(
+                        Localization.t(key, lang),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
             }
@@ -358,14 +390,12 @@ fun ChatScreen(
                         IconButton(
                             onClick = {
                                 if (messageInput.isNotBlank()) {
-                                    repository.sendMessage(match.id, messageInput.trim())
+                                    lastDraft = messageInput
+                                    chatViewModel.send(messageInput)
                                     messageInput = ""
-                                    coroutineScope.launch {
-                                        listState.animateScrollToItem((messages.size).coerceAtLeast(0))
-                                    }
                                 }
                             },
-                            enabled = messageInput.isNotBlank(),
+                            enabled = messageInput.isNotBlank() && !chatState.sending,
                             modifier = Modifier
                                 .size(48.dp)
                                 .background(
@@ -505,13 +535,37 @@ fun ChatScreen(
             }
         )
     }
+
+    // Report one message (long-press on the other person's message)
+    reportedMessage?.let { message ->
+        ReportProfileDialog(
+            userToReport = match.matchedUser,
+            repository = repository,
+            messageId = message.id,
+            onDismiss = { reportedMessage = null }
+        )
+    }
 }
 
+/** Words and patterns that trigger the safety hint (money requests, contact details, links). */
+object ChatSafety {
+    private val words = listOf(
+        "money", "geld", "bank", "iban", "crypto", "bitcoin", "telegram", "whatsapp", "paypal",
+        "western union", "wire", "überweisung", "gift card", "gutschein", "http", "www.", "t.me", ".com/"
+    )
+
+    fun looksRisky(text: String): Boolean {
+        val lower = text.lowercase()
+        return words.any { it in lower } || lower.contains("+49") || Regex("\\d[\\d\\s/-]{7,}\\d").containsMatchIn(lower)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatBubble(
     message: ChatMessage,
     isMe: Boolean,
-    sendReadReceipts: Boolean = true
+    onLongPress: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -525,7 +579,9 @@ fun ChatBubble(
                 bottomEnd = if (isMe) 4.dp else 16.dp
             ),
             color = if (isMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.widthIn(max = 280.dp)
+            modifier = Modifier
+                .widthIn(max = 280.dp)
+                .combinedClickable(onClick = {}, onLongClick = onLongPress, enabled = onLongPress != null)
         ) {
             Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                 Text(
@@ -545,22 +601,13 @@ fun ChatBubble(
                         color = if (isMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.extendedColors.muted
                     )
                     if (isMe) {
-                        if (sendReadReceipts) {
-                            Icon(
-                                imageVector = Icons.Default.DoneAll,
-                                contentDescription = "Read",
-                                tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
-                                modifier = Modifier.size(14.dp)
-                            )
-                        } else {
-                            // Privacy mode: show single check for Sent without leaking read status
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Sent",
-                                tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f),
-                                modifier = Modifier.size(13.dp)
-                            )
-                        }
+                        // One tick: sent. Two ticks: the other person opened the chat.
+                        Icon(
+                            imageVector = if (message.isRead) Icons.Default.DoneAll else Icons.Default.Check,
+                            contentDescription = if (message.isRead) "Read" else "Sent",
+                            tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = if (message.isRead) 0.85f else 0.7f),
+                            modifier = Modifier.size(14.dp)
+                        )
                     }
                 }
             }

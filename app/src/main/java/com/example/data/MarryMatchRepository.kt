@@ -3,7 +3,6 @@ package com.example.data
 import android.util.Log
 import com.example.core.AppConfig
 import com.example.core.AppLanguage
-import com.example.model.ChatMessage
 import com.example.model.MatchItem
 import com.example.model.ProfilePrompt
 import com.example.model.PromptCatalog
@@ -19,6 +18,7 @@ import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.storage.Storage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +74,9 @@ class MarryMatchRepository {
     private var _discovery: DiscoveryApi? = null
     val discovery: DiscoveryApi? get() = _discovery
 
+    private var _chat: ChatApi? = null
+    val chat: ChatApi? get() = _chat
+
     private val _isConfigured = MutableStateFlow(AppConfig.isConfigured)
     val isConfigured: StateFlow<Boolean> = _isConfigured.asStateFlow()
 
@@ -98,7 +101,7 @@ class MarryMatchRepository {
     private val _dailyProfiles = MutableStateFlow(SampleDataProvider.getDailyProfiles())
     val dailyProfiles: StateFlow<List<UserProfile>> = _dailyProfiles.asStateFlow()
 
-    // Real matches from the server (Phase 6); chat messages stay on the phone until Phase 7.
+    // Real matches from the server, with the last message and unread state for the chat list.
     private val _matches = MutableStateFlow<List<MatchItem>>(emptyList())
     val matches: StateFlow<List<MatchItem>> = _matches.asStateFlow()
 
@@ -106,8 +109,6 @@ class MarryMatchRepository {
     private val _receivedLikesCount = MutableStateFlow(0)
     val receivedLikesCount: StateFlow<Int> = _receivedLikesCount.asStateFlow()
 
-    private val _chatMessages = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
-    val chatMessages: StateFlow<Map<String, List<ChatMessage>>> = _chatMessages.asStateFlow()
 
     private val _blockedUserIds = MutableStateFlow<Set<String>>(emptySet())
     val blockedUserIds: StateFlow<Set<String>> = _blockedUserIds.asStateFlow()
@@ -171,9 +172,11 @@ class MarryMatchRepository {
                     install(Auth)
                     install(Postgrest)
                     install(Storage)
+                    install(Realtime)
                 }
                 _profileService = ProfileService(_supabase!!)
                 _discovery = SupabaseDiscoveryService(_supabase!!) { _currentUser.value.id }
+                _chat = SupabaseChatService(_supabase!!) { _currentUser.value.id }
                 repositoryScope.launch {
                     checkInitialSession()
                 }
@@ -342,8 +345,9 @@ class MarryMatchRepository {
                     id = m.matchId,
                     matchedUser = m.user,
                     matchedAt = m.matchedAt,
-                    lastMessage = "",
-                    lastMessageTime = ""
+                    lastMessage = m.lastMessage.orEmpty(),
+                    lastMessageTime = m.lastMessageAt?.let { ChatTime.format(it) }.orEmpty(),
+                    unread = m.unreadCount > 0
                 )
             }
             _receivedLikesCount.value = api.receivedLikesCount()
@@ -466,7 +470,6 @@ class MarryMatchRepository {
         _currentUser.value = createEmptyUser()
         _blockedUserIds.value = emptySet()
         _matches.value = emptyList()
-        _chatMessages.value = emptyMap()
         _receivedLikesCount.value = 0
         _matchCelebration.value = null
         _authState.value = AuthState.WELCOME
@@ -533,25 +536,9 @@ class MarryMatchRepository {
         _matchCelebration.value = null
     }
 
-    fun sendMessage(matchId: String, text: String) {
-        val currentList = _chatMessages.value[matchId] ?: emptyList()
-        val newMessage = ChatMessage(
-            id = UUID.randomUUID().toString(),
-            matchId = matchId,
-            senderId = _currentUser.value.id,
-            body = text,
-            timestamp = "Just now"
-        )
-        val updated = currentList + newMessage
-        _chatMessages.value = _chatMessages.value + (matchId to updated)
-    }
-
     /** Removes the match for both people (the server deletes the chat with it). */
     fun unmatch(matchId: String) {
         _matches.value = _matches.value.filter { it.id != matchId }
-        val updatedMap = _chatMessages.value.toMutableMap()
-        updatedMap.remove(matchId)
-        _chatMessages.value = updatedMap
 
         val api = _discovery ?: return
         if (!isRealUserId(matchId)) return
@@ -608,7 +595,13 @@ class MarryMatchRepository {
      * Sends a report to the moderation queue. [reason] is one of the values allowed by the
      * reports table: fake, harassment, scam, underage, photo, other.
      */
-    suspend fun submitReport(reportedUserId: String, reportedUserName: String, reason: String, details: String): Result<Unit> {
+    suspend fun submitReport(
+        reportedUserId: String,
+        reportedUserName: String,
+        reason: String,
+        details: String,
+        messageId: String? = null
+    ): Result<Unit> {
         val client = _supabase
         val me = _currentUser.value.id
         if (client != null && isRealUserId(reportedUserId) && me.isNotBlank()) {
@@ -618,6 +611,7 @@ class MarryMatchRepository {
                     put("reported_id", reportedUserId)
                     put("reason", reason)
                     if (details.isNotBlank()) put("details", details.trim().take(1000))
+                    if (messageId != null && isRealUserId(messageId)) put("message_id", messageId)
                 })
             } catch (e: Throwable) {
                 Log.e("MarryMatchRepository", "Report failed: ${e.message}", e)
@@ -717,7 +711,6 @@ class MarryMatchRepository {
             isBanned = true
         )
         _matches.value = emptyList()
-        _chatMessages.value = emptyMap()
         _authState.value = AuthState.WELCOME
     }
 

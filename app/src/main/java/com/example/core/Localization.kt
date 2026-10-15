@@ -233,7 +233,13 @@ object Localization {
         "filters_save_failed" to "Your filters could not be saved. Please try again.",
         "likes_you_count" to "%d people liked your profile",
         "likes_you_none" to "No new likes yet",
-        "new_match_say_hello" to "New match! Say hello."
+        "new_match_say_hello" to "New match! Say hello.",
+        "starter_sunday" to "What does your ideal Sunday look like?",
+        "starter_city" to "How was your week in %s?",
+        "starter_family" to "What do family traditions mean to you?",
+        "chat_load_failed" to "Messages could not be loaded.",
+        "chat_send_failed" to "Your message was not sent. Please check your connection and try again.",
+        "chat_rate_limited" to "You are sending messages very quickly. Please wait a moment."
     )
 
     private val deStrings = mapOf(
@@ -457,6 +463,12 @@ object Localization {
         "filters_save_failed" to "Ihre Filter konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.",
         "likes_you_count" to "%d Personen gefällt Ihr Profil",
         "likes_you_none" to "Noch keine neuen Likes",
-        "new_match_say_hello" to "Neues Match! Sagen Sie Hallo."
+        "new_match_say_hello" to "Neues Match! Sagen Sie Hallo.",
+        "starter_sunday" to "Wie sieht Ihr idealer Sonntag aus?",
+        "starter_city" to "Wie war Ihre Woche in %s?",
+        "starter_family" to "Was bedeuten Ihnen Familientraditionen?",
+        "chat_load_failed" to "Die Nachrichten konnten nicht geladen werden.",
+        "chat_send_failed" to "Ihre Nachricht wurde nicht gesendet. Bitte prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+        "chat_rate_limited" to "Sie senden sehr schnell Nachrichten. Bitte warten Sie einen Moment."
     )
 }

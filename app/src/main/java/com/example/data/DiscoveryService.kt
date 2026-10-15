@@ -44,7 +44,10 @@ data class LikeResult(val matched: Boolean, val matchId: String?)
 data class MatchSummary(
     val matchId: String,
     val matchedAt: String,
-    val user: UserProfile
+    val user: UserProfile,
+    val lastMessage: String? = null,
+    val lastMessageAt: String? = null,
+    val unreadCount: Int = 0
 )
 
 /** Discovery on the server. An interface so the Discover logic can be tested with a fake. */
@@ -103,7 +106,10 @@ private data class MatchDto(
     val city: String? = null,
     val photo: String? = null,
     @SerialName("selfie_verified") val selfieVerified: Boolean = false,
-    @SerialName("phone_verified") val phoneVerified: Boolean = false
+    @SerialName("phone_verified") val phoneVerified: Boolean = false,
+    @SerialName("last_message") val lastMessage: String? = null,
+    @SerialName("last_message_at") val lastMessageAt: String? = null,
+    val unread: Int = 0
 )
 
 @Serializable
@@ -164,7 +170,10 @@ class SupabaseDiscoveryService(
                     phoneVerified = m.phoneVerified,
                     languages = emptyList(),
                     interests = emptyList()
-                )
+                ),
+                lastMessage = m.lastMessage,
+                lastMessageAt = m.lastMessageAt,
+                unreadCount = m.unread
             )
         }
 

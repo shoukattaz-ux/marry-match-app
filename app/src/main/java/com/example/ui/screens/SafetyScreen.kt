@@ -177,7 +177,8 @@ fun SafetyTipCard(icon: String, title: String, description: String) {
 fun ReportProfileDialog(
     userToReport: UserProfile,
     repository: MarryMatchRepository,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    messageId: String? = null
 ) {
     val lang by repository.appLanguage.collectAsState()
     val coroutineScope = rememberCoroutineScope()
@@ -288,7 +289,8 @@ fun ReportProfileDialog(
                                 reportedUserId = userToReport.id,
                                 reportedUserName = userToReport.displayName,
                                 reason = selectedReason,
-                                details = detailsText
+                                details = detailsText,
+                                messageId = messageId
                             )
                             isSending = false
                             if (result.isSuccess) {
