@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -363,6 +364,9 @@ fun ProfileHingeCard(
                 if (profile.photos.isNotEmpty()) {
                     PhotoHeart(enabled, Modifier.align(Alignment.TopEnd)) { onLikeTarget(photoTarget(0)) }
                 }
+                if (profile.photosBlurred) {
+                    BlurredPhotosBadge(lang, Modifier.align(Alignment.TopStart))
+                }
             }
 
             Spacer(Modifier.height(14.dp))
@@ -465,6 +469,23 @@ private fun PhotoHeart(enabled: Boolean, modifier: Modifier = Modifier, onClick:
             .testTag("photo_heart_button")
     ) {
         Icon(Icons.Outlined.FavoriteBorder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+    }
+}
+
+/** Tells the viewer why the photos are blurred and when they become clear. */
+@Composable
+private fun BlurredPhotosBadge(lang: AppLanguage, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .padding(12.dp)
+            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .testTag("blurred_photos_badge"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+        Text(Localization.t("photos_blurred_badge", lang), style = MaterialTheme.typography.labelMedium.copy(color = Color.White))
     }
 }
 

@@ -637,6 +637,10 @@ class MarryMatchRepository {
         val after = change(before)
         _privacy.value = after
         return try {
+            if (after.blurPhotos && !before.blurPhotos) {
+                // Others only get the blurred copies from now on, so they must all exist first.
+                _profileService?.ensureBlurredCopies(_currentUser.value.id)
+            }
             api.savePrivacy(after)
             Result.success(Unit)
         } catch (e: Throwable) {

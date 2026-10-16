@@ -298,7 +298,7 @@ class OnboardingViewModel(
                     _state.update { it.copy(photoBusy = false, errorKey = faceError) }
                     return@launch
                 }
-                val photo = service.uploadPhoto(userId, prepared.jpeg, _state.value.photos.size, prepared.thumb)
+                val photo = service.uploadPhoto(userId, prepared.jpeg, _state.value.photos.size, prepared.thumb, prepared.blurred)
                 _state.update {
                     it.copy(
                         photoBusy = false,

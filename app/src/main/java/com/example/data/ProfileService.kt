@@ -1,5 +1,6 @@
 package com.example.data
 
+import com.example.core.PhotoProcessor
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
@@ -114,19 +115,28 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
     }
 
     /**
-     * Uploads an already compressed JPEG to profile-photos/<user_id>/<random>.jpg, and the small
-     * list copy next to it as <random>_t.jpg (see [thumbPathFor]).
+     * Uploads an already compressed JPEG to profile-photos/<user_id>/<random>.jpg, the small
+     * list copy next to it as <random>_t.jpg (see [thumbPathFor]) and the blurred copy as
+     * <random>_b.jpg (see [blurPathFor]).
      */
-    suspend fun uploadPhoto(userId: String, jpeg: ByteArray, position: Int, thumb: ByteArray? = null): ProfilePhoto {
+    suspend fun uploadPhoto(
+        userId: String,
+        jpeg: ByteArray,
+        position: Int,
+        thumb: ByteArray? = null,
+        blurred: ByteArray? = null
+    ): ProfilePhoto {
         val path = "$userId/${UUID.randomUUID()}.jpg"
         photoBucket.upload(path, jpeg) {
             contentType = ContentType.Image.JPEG
             upsert = false
         }
-        if (thumb != null) {
-            // Optional: lists fall back to the full photo when the small copy is missing.
+        // Both copies are optional here: lists fall back to the full photo when the small copy is
+        // missing, and a missing blurred copy is made by [ensureBlurredCopies].
+        for ((copyPath, bytes) in listOf(thumbPathFor(path) to thumb, blurPathFor(path) to blurred)) {
+            if (bytes == null) continue
             runCatching {
-                photoBucket.upload(thumbPathFor(path), thumb) {
+                photoBucket.upload(copyPath, bytes) {
                     contentType = ContentType.Image.JPEG
                     upsert = false
                 }
@@ -142,8 +152,7 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
                 .decodeSingle<PhotoRow>()
         } catch (e: Throwable) {
             // Do not leave an orphaned file behind when the row is refused (e.g. 6-photo limit).
-            runCatching { photoBucket.delete(path) }
-            runCatching { photoBucket.delete(thumbPathFor(path)) }
+            runCatching { photoBucket.delete(listOf(path, thumbPathFor(path), blurPathFor(path))) }
             throw e
         }
         return ProfilePhoto(row.id, row.storagePath, photoLinks.url(row.storagePath).orEmpty(), row.position)
@@ -151,9 +160,32 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
 
     suspend fun deletePhoto(photo: ProfilePhoto) {
         client.from("profile_photos").delete { filter { eq("id", photo.id) } }
-        runCatching { photoBucket.delete(photo.storagePath) }
-        runCatching { photoBucket.delete(thumbPathFor(photo.storagePath)) }
+        runCatching { photoBucket.delete(listOf(photo.storagePath, thumbPathFor(photo.storagePath), blurPathFor(photo.storagePath))) }
     }
+
+    /**
+     * Makes the blurred copy of every photo that does not have one yet (photos uploaded before
+     * blurring existed, or whose copy failed to upload). Must succeed before "blur my photos" is
+     * switched on: while it is on, others are only given the blurred copies.
+     */
+    suspend fun ensureBlurredCopies(userId: String) {
+        val existing = photoBucket.list(userId) { limit = 100 }.map { "$userId/${it.name}" }.toSet()
+        val missing = loadPhotoPaths(userId).filter { blurPathFor(it) !in existing }
+        for (path in missing) {
+            val blurred = PhotoProcessor.blurredCopy(photoBucket.downloadAuthenticated(path))
+                ?: throw IllegalStateException("Unreadable photo")
+            photoBucket.upload(blurPathFor(path), blurred) {
+                contentType = ContentType.Image.JPEG
+                upsert = true
+            }
+        }
+    }
+
+    private suspend fun loadPhotoPaths(userId: String): List<String> =
+        client.from("profile_photos")
+            .select(columns = Columns.list("id", "storage_path", "position")) { filter { eq("user_id", userId) } }
+            .decodeList<PhotoRow>()
+            .map { it.storagePath }
 
     /** Saves the order shown on screen; the first photo is the main one. */
     suspend fun savePhotoOrder(photos: List<ProfilePhoto>) {
@@ -196,6 +228,9 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
 
         /** Path of the small list copy of a photo: "<user>/<id>.jpg" -> "<user>/<id>_t.jpg". */
         fun thumbPathFor(path: String): String = path.removeSuffix(".jpg") + "_t.jpg"
+
+        /** Path of the blurred copy: "<user>/<id>.jpg" -> "<user>/<id>_b.jpg" (migration 019). */
+        fun blurPathFor(path: String): String = path.removeSuffix(".jpg") + "_b.jpg"
         const val MIN_PHOTOS = 3
         const val MAX_PHOTOS = 6
 

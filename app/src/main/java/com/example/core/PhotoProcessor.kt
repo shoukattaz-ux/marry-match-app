@@ -22,8 +22,9 @@ import kotlin.math.roundToInt
 /**
  * A photo ready for upload: compressed JPEG bytes without any EXIF data (no GPS, no camera info).
  * [thumb] is a small copy for lists (match list, chat), so those screens download far less data.
+ * [blurred] is a strongly blurred copy, shown to non-matches when "blur my photos" is on.
  */
-class PreparedPhoto(val jpeg: ByteArray, val faceCount: Int?, val thumb: ByteArray? = null)
+class PreparedPhoto(val jpeg: ByteArray, val faceCount: Int?, val thumb: ByteArray? = null, val blurred: ByteArray? = null)
 
 /**
  * Prepares profile photos on the phone before upload (Phase 3 photo rules):
@@ -35,16 +36,44 @@ object PhotoProcessor {
     const val JPEG_QUALITY = 80
     const val THUMB_SIDE_PX = 360
     const val THUMB_QUALITY = 75
+    // Shrinking to a few pixels and scaling back up leaves only colours and rough shapes:
+    // no face can be recognised, and the copy is only a few KB.
+    const val BLUR_TINY_PX = 12
+    const val BLUR_SIDE_PX = 360
 
-    /** [withThumbnail] also makes the small list copy (profile photos; selfies do not need one). */
+    /** [withThumbnail] also makes the small list copy and the blurred copy (profile photos; selfies need neither). */
     suspend fun prepare(context: Context, uri: Uri, withThumbnail: Boolean = false): PreparedPhoto = withContext(Dispatchers.IO) {
         val bitmap = decodeUpright(context, uri)
         val faces = countFaces(bitmap)
         val out = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
         val thumb = if (withThumbnail) thumbnail(bitmap) else null
+        val blurred = if (withThumbnail) blurred(bitmap) else null
         bitmap.recycle()
-        PreparedPhoto(out.toByteArray(), faces, thumb)
+        PreparedPhoto(out.toByteArray(), faces, thumb, blurred)
+    }
+
+    /** Blurred copy of an already stored JPEG (photos uploaded before blurring existed). */
+    suspend fun blurredCopy(jpeg: ByteArray): ByteArray? = withContext(Dispatchers.IO) {
+        val bitmap = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) ?: return@withContext null
+        blurred(bitmap).also { bitmap.recycle() }
+    }
+
+    private fun blurred(bitmap: Bitmap): ByteArray {
+        fun scaled(src: Bitmap, longSide: Int): Bitmap {
+            val f = longSide.toFloat() / max(src.width, src.height)
+            return Bitmap.createScaledBitmap(
+                src, (src.width * f).roundToInt().coerceAtLeast(1), (src.height * f).roundToInt().coerceAtLeast(1), true
+            )
+        }
+        // Scale up in two steps so the result is smooth instead of blocky.
+        val tiny = scaled(bitmap, BLUR_TINY_PX)
+        val mid = scaled(tiny, BLUR_TINY_PX * 4)
+        val big = scaled(mid, BLUR_SIDE_PX)
+        val out = ByteArrayOutputStream()
+        big.compress(Bitmap.CompressFormat.JPEG, THUMB_QUALITY, out)
+        listOf(tiny, mid, big).filter { it !== bitmap }.distinct().forEach { it.recycle() }
+        return out.toByteArray()
     }
 
     private fun thumbnail(bitmap: Bitmap): ByteArray {

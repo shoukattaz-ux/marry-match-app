@@ -26,4 +26,10 @@ class PhotoCacheTest {
     fun thumbnailPathSitsNextToThePhoto() {
         assertEquals("u1/p1_t.jpg", ProfileService.thumbPathFor("u1/p1.jpg"))
     }
+
+    @Test
+    fun blurredCopyPathEndsWithTheSuffixTheServerAllows() {
+        // Migration 019 lets non-matches read only files ending in "_b.jpg" when blurring is on.
+        assertEquals("u1/p1_b.jpg", ProfileService.blurPathFor("u1/p1.jpg"))
+    }
 }

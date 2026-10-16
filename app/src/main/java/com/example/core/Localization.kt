@@ -395,7 +395,11 @@ object Localization {
         "match_expires_today" to "Expires within a day – say hello now!",
         "chat_match_expired" to "This match has expired because nobody wrote within 7 days.",
         "privacy_show_activity" to "Show when I'm active",
-        "privacy_show_activity_desc" to "Others see \"Active today\" or \"Active this week\", and \"Online\" or \"typing…\" in an open chat with a match. Never exact times. If you turn this off, you also don't see others' activity."
+        "privacy_show_activity_desc" to "Others see \"Active today\" or \"Active this week\", and \"Online\" or \"typing…\" in an open chat with a match. Never exact times. If you turn this off, you also don't see others' activity.",
+        "privacy_blur_photos" to "Blur my photos until we match",
+        "privacy_blur_photos_desc" to "People in their daily suggestions only see a blurred version of your photos. Your matches see them clearly. The server enforces this, so the clear photos cannot be loaded before a match.",
+        "privacy_blur_photos_busy" to "Preparing blurred copies of your photos…",
+        "photos_blurred_badge" to "Photos clear after a match"
     )
 
     private val deStrings = mapOf(
@@ -781,6 +785,10 @@ object Localization {
         "match_expires_today" to "Läuft in einem Tag ab – jetzt Hallo sagen!",
         "chat_match_expired" to "Dieses Match ist abgelaufen, weil 7 Tage lang niemand geschrieben hat.",
         "privacy_show_activity" to "Zeigen, wann ich aktiv bin",
-        "privacy_show_activity_desc" to "Andere sehen „Heute aktiv“ oder „Diese Woche aktiv“ und in einem offenen Chat mit einem Match „Online“ oder „schreibt…“. Nie genaue Uhrzeiten. Wenn Sie das ausschalten, sehen Sie auch die Aktivität anderer nicht."
+        "privacy_show_activity_desc" to "Andere sehen „Heute aktiv“ oder „Diese Woche aktiv“ und in einem offenen Chat mit einem Match „Online“ oder „schreibt…“. Nie genaue Uhrzeiten. Wenn Sie das ausschalten, sehen Sie auch die Aktivität anderer nicht.",
+        "privacy_blur_photos" to "Meine Fotos bis zum Match verschwimmen",
+        "privacy_blur_photos_desc" to "Wer Sie in den täglichen Vorschlägen sieht, sieht nur eine verschwommene Version Ihrer Fotos. Ihre Matches sehen sie klar. Der Server setzt das durch, klare Fotos lassen sich vor einem Match nicht laden.",
+        "privacy_blur_photos_busy" to "Verschwommene Kopien Ihrer Fotos werden erstellt…",
+        "photos_blurred_badge" to "Fotos klar nach einem Match"
     )
 }

@@ -44,7 +44,9 @@ data class UserProfile(
     val countryOk: Boolean = true,
     val respectScore: Int = 100,
     /** "today", "week" or "" (unknown or hidden); never an exact time. */
-    val activity: String = ""
+    val activity: String = "",
+    /** [photos] are blurred copies: this member shows clear photos only to matches. */
+    val photosBlurred: Boolean = false
 )
 
 /** A question users can answer on their profile; [key] is what the database stores. */

@@ -85,6 +85,7 @@ private data class CardDto(
     @SerialName("selfie_verified") val selfieVerified: Boolean = false,
     @SerialName("phone_verified") val phoneVerified: Boolean = false,
     val active: String? = null,
+    @SerialName("photos_blurred") val photosBlurred: Boolean = false,
     val photos: List<CardPhotoDto> = emptyList(),
     val prompts: List<CardPromptDto> = emptyList()
 )
@@ -134,7 +135,7 @@ class SupabaseDiscoveryService(
 
     override suspend fun getDailySet(): DailySet {
         val dto = client.postgrest.rpc("get_daily_set").decodeAs<DailySetDto>()
-        photoLinks.urls(dto.profiles.flatMap { c -> c.photos.map { it.path } })  // sign all photos in one request
+        photoLinks.urls(dto.profiles.flatMap { c -> c.photos.map { c.shownPath(it.path) } })  // sign all photos in one request
         return DailySet(total = dto.total, profiles = dto.profiles.map { it.toUserProfile() })
     }
 
@@ -218,7 +219,7 @@ class SupabaseDiscoveryService(
 
     private suspend fun CardDto.toUserProfile(): UserProfile {
         // Keep ids and links aligned; a photo the server refuses to sign is left out of both.
-        val signed = photos.mapNotNull { ph -> photoLinks.url(ph.path)?.let { ph.id to it } }
+        val signed = photos.mapNotNull { ph -> photoLinks.url(shownPath(ph.path))?.let { ph.id to it } }
         return UserProfile(
             id = id,
             displayName = displayName,
@@ -250,7 +251,11 @@ class SupabaseDiscoveryService(
             },
             selfieVerified = selfieVerified,
             phoneVerified = phoneVerified,
-            activity = active.orEmpty()
+            activity = active.orEmpty(),
+            photosBlurred = photosBlurred
         )
     }
+
+    /** Members who blur their photos are shown with the blurred copies; the server refuses the clear ones. */
+    private fun CardDto.shownPath(path: String) = if (photosBlurred) ProfileService.blurPathFor(path) else path
 }

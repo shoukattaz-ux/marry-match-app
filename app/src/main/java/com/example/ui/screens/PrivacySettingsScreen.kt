@@ -42,6 +42,7 @@ fun PrivacySettingsScreen(
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var showDeleteAccount by remember { mutableStateOf(false) }
+    var blurBusy by remember { mutableStateOf(false) }
     val (exporting, startExport) = rememberDataExport(repository) { msg -> scope.launch { snackbar.showSnackbar(msg) } }
 
     LaunchedEffect(Unit) { repository.loadPrivacy() }
@@ -110,6 +111,24 @@ fun PrivacySettingsScreen(
                     checked = !privacy.hideActivity,
                     onCheckedChange = { on -> change { it.copy(hideActivity = !on) } },
                     testTag = "toggle_show_activity"
+                )
+                HorizontalDivider()
+                PrivacyToggleRow(
+                    title = Localization.t("privacy_blur_photos", lang),
+                    description = Localization.t(if (blurBusy) "privacy_blur_photos_busy" else "privacy_blur_photos_desc", lang),
+                    checked = privacy.blurPhotos,
+                    onCheckedChange = { on ->
+                        if (!blurBusy) {
+                            blurBusy = on  // turning it on first makes blurred copies of older photos
+                            scope.launch {
+                                repository.updatePrivacy { it.copy(blurPhotos = on) }.onFailure {
+                                    snackbar.showSnackbar(Localization.t("privacy_save_failed", lang))
+                                }
+                                blurBusy = false
+                            }
+                        }
+                    },
+                    testTag = "toggle_blur_photos"
                 )
             }
 
