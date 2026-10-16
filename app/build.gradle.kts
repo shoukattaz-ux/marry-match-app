@@ -17,8 +17,10 @@ android {
     applicationId = "de.marrymatch.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    // Google Play needs a higher versionCode for every upload; the release workflow passes the
+    // GitHub run number. Local builds keep 1.
+    versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
+    versionName = System.getenv("VERSION_NAME") ?: "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
