@@ -114,8 +114,6 @@ class MarryMatchRepository {
     private val _currentUser = MutableStateFlow(createEmptyUser())
     val currentUser: StateFlow<UserProfile> = _currentUser.asStateFlow()
 
-    private val _dailyProfiles = MutableStateFlow(SampleDataProvider.getDailyProfiles())
-    val dailyProfiles: StateFlow<List<UserProfile>> = _dailyProfiles.asStateFlow()
 
     // Real matches from the server, with the last message and unread state for the chat list.
     private val _matches = MutableStateFlow<List<MatchItem>>(emptyList())
@@ -682,7 +680,6 @@ class MarryMatchRepository {
     fun blockUser(userId: String) {
         _blockedUserIds.value = _blockedUserIds.value + userId
         _matches.value = _matches.value.filter { it.matchedUser.id != userId }
-        _dailyProfiles.value = _dailyProfiles.value.filter { it.id != userId }
 
         val client = _supabase ?: return
         val me = _currentUser.value.id

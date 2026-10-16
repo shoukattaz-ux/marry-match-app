@@ -147,7 +147,6 @@ class SupabaseAuthTest {
     fun testBlockHidesPersonImmediately() {
         repository.blockUser("c1")
         assertTrue("c1" in repository.blockedUserIds.value)
-        assertTrue(repository.dailyProfiles.value.none { it.id == "c1" })
     }
 
     @Test
