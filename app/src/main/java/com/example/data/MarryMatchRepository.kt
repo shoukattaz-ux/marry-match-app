@@ -144,27 +144,12 @@ class MarryMatchRepository {
     var notifyLikes: Boolean = true
     var notifyDailyProfiles: Boolean = true
 
-    // Privacy & Visibility Settings (GDPR compliance)
-    private val _isIncognito = MutableStateFlow(false)
-    val isIncognito: StateFlow<Boolean> = _isIncognito.asStateFlow()
+    // Privacy settings, stored on the server and applied there to what others see.
+    private val _privacy = MutableStateFlow(PrivacySettings())
+    val privacy: StateFlow<PrivacySettings> = _privacy.asStateFlow()
 
-    private val _visibleOnlyToVerified = MutableStateFlow(false)
-    val visibleOnlyToVerified: StateFlow<Boolean> = _visibleOnlyToVerified.asStateFlow()
-
-    private val _showExactCity = MutableStateFlow(true)
-    val showExactCity: StateFlow<Boolean> = _showExactCity.asStateFlow()
-
-    private val _showReligionOnProfile = MutableStateFlow(true)
-    val showReligionOnProfile: StateFlow<Boolean> = _showReligionOnProfile.asStateFlow()
-
-    private val _showOccupationOnProfile = MutableStateFlow(true)
-    val showOccupationOnProfile: StateFlow<Boolean> = _showOccupationOnProfile.asStateFlow()
-
-    private val _sendReadReceipts = MutableStateFlow(true)
-    val sendReadReceipts: StateFlow<Boolean> = _sendReadReceipts.asStateFlow()
-
-    private val _analyticsConsent = MutableStateFlow(false)
-    val analyticsConsent: StateFlow<Boolean> = _analyticsConsent.asStateFlow()
+    private var _account: AccountApi? = null
+    val account: AccountApi? get() = _account
 
     init {
         initializeSupabase()
@@ -188,6 +173,7 @@ class MarryMatchRepository {
                 _discovery = SupabaseDiscoveryService(_supabase!!) { _currentUser.value.id }
                 _chat = SupabaseChatService(_supabase!!) { _currentUser.value.id }
                 _admin = SupabaseAdminService(_supabase!!)
+                _account = SupabaseAccountService(_supabase!!) { _currentUser.value.id }
                 _verification = SupabaseVerificationService(_supabase!!, _profileService!!) { _currentUser.value.id }
                 repositoryScope.launch {
                     checkInitialSession()
@@ -526,6 +512,7 @@ class MarryMatchRepository {
         _receivedLikesCount.value = 0
         _matchCelebration.value = null
         _selfieStatus.value = SelfieStatus(SelfieStatus.NONE)
+        _privacy.value = PrivacySettings()
         _authState.value = AuthState.WELCOME
     }
 
@@ -559,13 +546,31 @@ class MarryMatchRepository {
     fun hasValidSignupPass(): Boolean =
         signupPass != null && System.currentTimeMillis() - signupPassIssuedAtMs <= SIGNUP_PASS_MAX_AGE_MS
 
-    fun setIncognito(enabled: Boolean) { _isIncognito.value = enabled }
-    fun setVisibleOnlyToVerified(enabled: Boolean) { _visibleOnlyToVerified.value = enabled }
-    fun setShowExactCity(enabled: Boolean) { _showExactCity.value = enabled }
-    fun setShowReligionOnProfile(enabled: Boolean) { _showReligionOnProfile.value = enabled }
-    fun setShowOccupationOnProfile(enabled: Boolean) { _showOccupationOnProfile.value = enabled }
-    fun setSendReadReceipts(enabled: Boolean) { _sendReadReceipts.value = enabled }
-    fun setAnalyticsConsent(enabled: Boolean) { _analyticsConsent.value = enabled }
+    /** Loads the privacy settings, e.g. when the settings screen opens. */
+    suspend fun loadPrivacy() {
+        val api = _account ?: return
+        if (_currentUser.value.id.isBlank()) return
+        try {
+            _privacy.value = api.loadPrivacy()
+        } catch (e: Throwable) {
+            Log.w("MarryMatchRepository", "Could not load privacy settings: ${e.message}")
+        }
+    }
+
+    /** Shows the change right away and saves it; on failure the old settings come back. */
+    suspend fun updatePrivacy(change: (PrivacySettings) -> PrivacySettings): Result<Unit> {
+        val api = _account ?: return Result.failure(IllegalStateException("Supabase is not configured."))
+        val before = _privacy.value
+        val after = change(before)
+        _privacy.value = after
+        return try {
+            api.savePrivacy(after)
+            Result.success(Unit)
+        } catch (e: Throwable) {
+            _privacy.value = before
+            Result.failure(e)
+        }
+    }
 
     fun setLanguage(lang: AppLanguage) {
         _appLanguage.value = lang
@@ -683,41 +688,28 @@ class MarryMatchRepository {
         _selectedRegionFilter.value = region
     }
 
-    fun exportDataJson(): String {
-        val user = _currentUser.value
-        return """
-        {
-          "gdpr_export": {
-            "account_id": "${user.id}",
-            "email": "${user.email}",
-            "display_name": "${user.displayName}",
-            "birth_date": "${user.birthDate}",
-            "age": ${user.age},
-            "gender": "${user.gender}",
-            "city": "${user.city}",
-            "region": "${user.region}",
-            "marriage_timeline": "${user.marriageTimeline}",
-            "wants_children": "${user.wantsChildren}",
-            "religion": "${user.religion}",
-            "occupation": "${user.occupation}",
-            "languages": ${user.languages.joinToString(prefix = "[\"", separator = "\", \"", postfix = "\"]")},
-            "selfie_verified": ${user.selfieVerified},
-            "phone_verified": ${user.phoneVerified},
-            "respect_score": ${user.respectScore},
-            "exported_at": "${System.currentTimeMillis()}"
-          }
+    /** Everything the server stores about the user, as JSON (GDPR Art. 15 and 20). */
+    suspend fun exportMyData(): Result<String> {
+        val api = _account ?: return Result.failure(IllegalStateException("Supabase is not configured."))
+        return try {
+            Result.success(api.exportData())
+        } catch (e: Throwable) {
+            Log.e("MarryMatchRepository", "Export failed: ${e.message}", e)
+            Result.failure(e)
         }
-        """.trimIndent()
     }
 
-    fun deleteAccount() {
-        signOut()
-        _currentUser.value = createEmptyUser().copy(
-            displayName = "Deleted Account",
-            isBanned = true
-        )
-        _matches.value = emptyList()
-        _authState.value = AuthState.WELCOME
+    /** Deletes the account on the server for good, then clears everything on the phone. */
+    suspend fun deleteAccount(): Result<Unit> {
+        val api = _account ?: return Result.failure(IllegalStateException("Supabase is not configured."))
+        return try {
+            api.deleteAccount()
+            signOut()
+            Result.success(Unit)
+        } catch (e: Throwable) {
+            Log.e("MarryMatchRepository", "Account deletion failed: ${e.message}", e)
+            Result.failure(e)
+        }
     }
 
     companion object {

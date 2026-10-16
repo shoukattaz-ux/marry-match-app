@@ -59,6 +59,7 @@ fun SignUpScreen(
     var birthYear by remember { mutableStateOf("") }
 
     var agreedToTerms by remember { mutableStateOf(false) }
+    var legalPage by remember { mutableStateOf<LegalPage?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     // Set when the location pass expired or was refused, so the user must run the check again
@@ -387,6 +388,17 @@ fun SignUpScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
+
+                // The texts the user agrees to must be readable before agreeing.
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf(LegalPage.TERMS to "terms_link", LegalPage.PRIVACY to "privacy_link", LegalPage.CONDUCT to "code_of_conduct_link")
+                        .forEach { (page, key) ->
+                            TextButton(onClick = { legalPage = page }, contentPadding = PaddingValues(horizontal = 6.dp)) {
+                                Text(Localization.t(key, lang), style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                }
+                legalPage?.let { LegalPageDialog(it, lang) { legalPage = null } }
 
                 if (errorMessage != null) {
                     Surface(

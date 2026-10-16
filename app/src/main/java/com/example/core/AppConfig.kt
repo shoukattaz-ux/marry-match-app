@@ -57,6 +57,20 @@ object AppConfig {
     // Consent for the biometric selfie check, GDPR Art. 9
     const val SELFIE_CONSENT_VERSION = "1.0"
 
+    // Operator details for the Impressum and the privacy policy. German law requires the real
+    // name and a postal address before the app is published; the app shows a warning until
+    // LEGAL_DETAILS_COMPLETE is true. Never put invented company data here.
+    const val LEGAL_OPERATOR_NAME = "[Name of the operator / company]"
+    const val LEGAL_ADDRESS = "[Street and number, postcode and city, Germany]"
+    const val LEGAL_EMAIL = "[contact email]"
+    const val LEGAL_PHONE = "[phone number]"
+    const val LEGAL_REPRESENTATIVE = "[name of the responsible person]"
+    const val LEGAL_REGISTER = "[commercial register and number, if any]"
+    const val LEGAL_VAT_ID = "[VAT ID, if any]"
+    const val LEGAL_DETAILS_COMPLETE = false
+    // Set to true once a lawyer has reviewed the privacy policy and terms (LegalTexts.kt).
+    const val LEGAL_TEXTS_REVIEWED = false
+
     val isConfigured: Boolean
         get() = SUPABASE_URL.startsWith("https://") &&
                 !SUPABASE_URL.contains("your-project") &&

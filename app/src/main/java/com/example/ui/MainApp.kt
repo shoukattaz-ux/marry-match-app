@@ -133,14 +133,7 @@ fun MainApp(
                         BackHandler { activeSubScreen = ActiveSubScreen.SETTINGS }
                         PrivacySettingsScreen(
                             repository = repository,
-                            onBack = { activeSubScreen = ActiveSubScreen.SETTINGS },
-                            onExportData = {
-                                // Handled in settings export
-                            },
-                            onDeleteAccount = {
-                                repository.deleteAccount()
-                                activeSubScreen = ActiveSubScreen.NONE
-                            }
+                            onBack = { activeSubScreen = ActiveSubScreen.SETTINGS }
                         )
                     }
                     ActiveSubScreen.ADMIN_PANEL -> {
