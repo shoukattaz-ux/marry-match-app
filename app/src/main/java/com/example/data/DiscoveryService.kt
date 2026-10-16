@@ -156,7 +156,9 @@ class SupabaseDiscoveryService(
 
     override suspend fun getMatches(): List<MatchSummary> {
         val rows = client.postgrest.rpc("get_my_matches").decodeAs<List<MatchDto>>()
-        photoLinks.urls(rows.mapNotNull { it.photo })
+        // The match list and chat only show a small avatar: use the small copy when it exists.
+        val paths = rows.mapNotNull { it.photo }
+        photoLinks.urls(paths.map(ProfileService::thumbPathFor) + paths)
         return rows.map { m ->
             MatchSummary(
                 matchId = m.matchId,
@@ -166,7 +168,7 @@ class SupabaseDiscoveryService(
                     displayName = m.displayName,
                     age = m.age,
                     city = m.city.orEmpty(),
-                    photos = listOfNotNull(m.photo?.let { photoLinks.url(it) }),
+                    photos = listOfNotNull(m.photo?.let { photoLinks.url(ProfileService.thumbPathFor(it)) ?: photoLinks.url(it) }),
                     selfieVerified = m.selfieVerified,
                     phoneVerified = m.phoneVerified,
                     languages = emptyList(),

@@ -291,14 +291,14 @@ class OnboardingViewModel(
         _state.update { it.copy(photoBusy = true, errorKey = null) }
         viewModelScope.launch {
             try {
-                val prepared = PhotoProcessor.prepare(context.applicationContext, uri)
+                val prepared = PhotoProcessor.prepare(context.applicationContext, uri, withThumbnail = true)
                 val becomesMain = _state.value.photos.isEmpty()
                 val faceError = if (becomesMain) faceErrorKey(prepared.faceCount) else null
                 if (faceError != null) {
                     _state.update { it.copy(photoBusy = false, errorKey = faceError) }
                     return@launch
                 }
-                val photo = service.uploadPhoto(userId, prepared.jpeg, _state.value.photos.size)
+                val photo = service.uploadPhoto(userId, prepared.jpeg, _state.value.photos.size, prepared.thumb)
                 _state.update {
                     it.copy(
                         photoBusy = false,

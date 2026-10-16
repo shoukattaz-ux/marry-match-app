@@ -113,12 +113,24 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
         }
     }
 
-    /** Uploads an already compressed JPEG to profile-photos/<user_id>/<random>.jpg. */
-    suspend fun uploadPhoto(userId: String, jpeg: ByteArray, position: Int): ProfilePhoto {
+    /**
+     * Uploads an already compressed JPEG to profile-photos/<user_id>/<random>.jpg, and the small
+     * list copy next to it as <random>_t.jpg (see [thumbPathFor]).
+     */
+    suspend fun uploadPhoto(userId: String, jpeg: ByteArray, position: Int, thumb: ByteArray? = null): ProfilePhoto {
         val path = "$userId/${UUID.randomUUID()}.jpg"
         photoBucket.upload(path, jpeg) {
             contentType = ContentType.Image.JPEG
             upsert = false
+        }
+        if (thumb != null) {
+            // Optional: lists fall back to the full photo when the small copy is missing.
+            runCatching {
+                photoBucket.upload(thumbPathFor(path), thumb) {
+                    contentType = ContentType.Image.JPEG
+                    upsert = false
+                }
+            }
         }
         val row = try {
             client.from("profile_photos")
@@ -131,6 +143,7 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
         } catch (e: Throwable) {
             // Do not leave an orphaned file behind when the row is refused (e.g. 6-photo limit).
             runCatching { photoBucket.delete(path) }
+            runCatching { photoBucket.delete(thumbPathFor(path)) }
             throw e
         }
         return ProfilePhoto(row.id, row.storagePath, photoLinks.url(row.storagePath).orEmpty(), row.position)
@@ -139,6 +152,7 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
     suspend fun deletePhoto(photo: ProfilePhoto) {
         client.from("profile_photos").delete { filter { eq("id", photo.id) } }
         runCatching { photoBucket.delete(photo.storagePath) }
+        runCatching { photoBucket.delete(thumbPathFor(photo.storagePath)) }
     }
 
     /** Saves the order shown on screen; the first photo is the main one. */
@@ -179,6 +193,9 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
 
     companion object {
         const val PHOTO_BUCKET = "profile-photos"
+
+        /** Path of the small list copy of a photo: "<user>/<id>.jpg" -> "<user>/<id>_t.jpg". */
+        fun thumbPathFor(path: String): String = path.removeSuffix(".jpg") + "_t.jpg"
         const val MIN_PHOTOS = 3
         const val MAX_PHOTOS = 6
 

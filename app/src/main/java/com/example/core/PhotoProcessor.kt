@@ -19,8 +19,11 @@ import kotlin.coroutines.resume
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** A photo ready for upload: compressed JPEG bytes without any EXIF data (no GPS, no camera info). */
-class PreparedPhoto(val jpeg: ByteArray, val faceCount: Int?)
+/**
+ * A photo ready for upload: compressed JPEG bytes without any EXIF data (no GPS, no camera info).
+ * [thumb] is a small copy for lists (match list, chat), so those screens download far less data.
+ */
+class PreparedPhoto(val jpeg: ByteArray, val faceCount: Int?, val thumb: ByteArray? = null)
 
 /**
  * Prepares profile photos on the phone before upload (Phase 3 photo rules):
@@ -30,14 +33,30 @@ class PreparedPhoto(val jpeg: ByteArray, val faceCount: Int?)
 object PhotoProcessor {
     const val MAX_SIDE_PX = 1080
     const val JPEG_QUALITY = 80
+    const val THUMB_SIDE_PX = 360
+    const val THUMB_QUALITY = 75
 
-    suspend fun prepare(context: Context, uri: Uri): PreparedPhoto = withContext(Dispatchers.IO) {
+    /** [withThumbnail] also makes the small list copy (profile photos; selfies do not need one). */
+    suspend fun prepare(context: Context, uri: Uri, withThumbnail: Boolean = false): PreparedPhoto = withContext(Dispatchers.IO) {
         val bitmap = decodeUpright(context, uri)
         val faces = countFaces(bitmap)
         val out = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
+        val thumb = if (withThumbnail) thumbnail(bitmap) else null
         bitmap.recycle()
-        PreparedPhoto(out.toByteArray(), faces)
+        PreparedPhoto(out.toByteArray(), faces, thumb)
+    }
+
+    private fun thumbnail(bitmap: Bitmap): ByteArray {
+        val longSide = max(bitmap.width, bitmap.height)
+        val scale = if (longSide > THUMB_SIDE_PX) THUMB_SIDE_PX.toFloat() / longSide else 1f
+        val small = Bitmap.createScaledBitmap(
+            bitmap, (bitmap.width * scale).roundToInt().coerceAtLeast(1), (bitmap.height * scale).roundToInt().coerceAtLeast(1), true
+        )
+        val out = ByteArrayOutputStream()
+        small.compress(Bitmap.CompressFormat.JPEG, THUMB_QUALITY, out)
+        if (small !== bitmap) small.recycle()
+        return out.toByteArray()
     }
 
     /** Face count for an already stored JPEG (used when an older photo becomes the main photo). */

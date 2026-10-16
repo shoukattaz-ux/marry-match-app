@@ -69,4 +69,27 @@ class PhotoUrlSignerTest {
         signer.urls(listOf("a/1.jpg"))
         assertEquals(2, requests.size)
     }
+
+    @Test
+    fun refusedPathsAreNotAskedAgainForAWhile() = runTest {
+        refused = setOf("a/1_t.jpg")
+        signer.urls(listOf("a/1_t.jpg"))
+        signer.urls(listOf("a/1_t.jpg"))
+        assertEquals("refused path asked only once", 1, requests.size)
+        now = 11 * 60 * 1000L
+        refused = emptySet()
+        assertEquals("https://signed/a/1_t.jpg?t=660000&s=3600", signer.url("a/1_t.jpg"))
+    }
+
+    @Test
+    fun networkErrorsAreRetriedRightAway() = runTest {
+        var offline = true
+        val flaky = PhotoUrlSigner(sign = { paths, _ ->
+            if (offline) throw java.io.IOException("offline")
+            paths.associateWith { "https://signed/$it" }
+        }, nowMs = { now })
+        assertEquals(emptyList<String>(), flaky.urls(listOf("a/1.jpg")))
+        offline = false
+        assertEquals(listOf("https://signed/a/1.jpg"), flaky.urls(listOf("a/1.jpg")))
+    }
 }
