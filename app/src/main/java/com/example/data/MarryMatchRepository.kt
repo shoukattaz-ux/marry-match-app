@@ -216,14 +216,15 @@ class MarryMatchRepository {
         birthDate: String,
         age: Int
     ): Result<Unit> {
-        val client = _supabase ?: return Result.failure(
-            IllegalStateException("Supabase is not configured. Please add SUPABASE_URL and SUPABASE_ANON_KEY.")
-        )
+        // The location pass is checked first: without it there is nothing to send to the server.
         val pass = signupPass
         if (pass == null || System.currentTimeMillis() - signupPassIssuedAtMs > SIGNUP_PASS_MAX_AGE_MS) {
             signupPass = null
             return Result.failure(SignupPassRequiredException())
         }
+        val client = _supabase ?: return Result.failure(
+            IllegalStateException("Supabase is not configured. Please add SUPABASE_URL and SUPABASE_ANON_KEY.")
+        )
         return try {
             // The server checks every value below again (handle_new_user trigger) and
             // refuses the account if the pass, age, email domain or consents are not valid.

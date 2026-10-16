@@ -61,8 +61,10 @@ class ChatViewModel(
             chat.changes(matchId)
                 .catch { /* live updates stop; the history stays and the user can reopen the chat */ }
                 .collect { message ->
+                    // A live update can repeat a message we already have; only new ones are marked read.
+                    val isNew = _state.value.messages.none { it.id == message.id }
                     _state.update { s -> s.copy(messages = merge(s.messages, listOf(message))) }
-                    markIncomingRead(listOf(message))
+                    if (isNew) markIncomingRead(listOf(message))
                 }
         }
     }
