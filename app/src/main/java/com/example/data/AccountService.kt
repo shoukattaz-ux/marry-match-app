@@ -27,7 +27,9 @@ data class PrivacySettings(
     @SerialName("verified_viewers_only") val verifiedViewersOnly: Boolean = false,
     @SerialName("hide_city") val hideCity: Boolean = false,
     @SerialName("hide_religion") val hideReligion: Boolean = false,
-    @SerialName("hide_occupation") val hideOccupation: Boolean = false
+    @SerialName("hide_occupation") val hideOccupation: Boolean = false,
+    /** Hides "active today" and live "online / typing"; then the user sees nobody's activity either. */
+    @SerialName("hide_activity") val hideActivity: Boolean = false
 )
 
 /** Which pushes the user wants; the database checks these before queuing a push. */
@@ -47,6 +49,8 @@ interface AccountApi {
     /** Links this phone's push token to the signed-in account; [lang] is "en" or "de". */
     suspend fun registerPushToken(token: String, lang: String)
     suspend fun unregisterPushToken(token: String)
+    /** Marks the user as active now (the server writes at most every 5 minutes). */
+    suspend fun touchActivity()
     /** All stored data about the user as pretty-printed JSON (GDPR Art. 15 and 20). */
     suspend fun exportData(): String
     /** Deletes the account on the server for good (GDPR Art. 17). */
@@ -77,6 +81,7 @@ class SupabaseAccountService(
             put("hide_city", settings.hideCity)
             put("hide_religion", settings.hideReligion)
             put("hide_occupation", settings.hideOccupation)
+            put("hide_activity", settings.hideActivity)
         }) { filter { eq("id", currentUserId()) } }
     }
 
@@ -104,6 +109,10 @@ class SupabaseAccountService(
         client.postgrest.rpc("unregister_push_token", buildJsonObject { put("p_token", token) })
     }
 
+    override suspend fun touchActivity() {
+        client.postgrest.rpc("touch_activity")
+    }
+
     override suspend fun exportData(): String {
         val data = client.postgrest.rpc("export_my_data").decodeAs<JsonElement>()
         return pretty.encodeToString(JsonElement.serializer(), data)
@@ -125,6 +134,6 @@ class SupabaseAccountService(
     }
 
     companion object {
-        private val COLUMNS = listOf("incognito", "verified_viewers_only", "hide_city", "hide_religion", "hide_occupation")
+        private val COLUMNS = listOf("incognito", "verified_viewers_only", "hide_city", "hide_religion", "hide_occupation", "hide_activity")
     }
 }

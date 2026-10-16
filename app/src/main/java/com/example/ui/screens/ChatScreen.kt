@@ -44,6 +44,7 @@ import com.example.data.MarryMatchRepository
 import com.example.ui.viewmodel.ChatViewModel
 import com.example.model.ChatMessage
 import com.example.model.MatchItem
+import com.example.ui.components.ChatPeerStatus
 import com.example.ui.components.SafetyNoticeBanner
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.extendedColors
@@ -60,7 +61,12 @@ fun ChatScreen(
     val lang by repository.appLanguage.collectAsState()
     val user by repository.currentUser.collectAsState()
     val chatViewModel: ChatViewModel = viewModel(key = "chat_${match.id}") {
-        ChatViewModel(match.id, repository.currentUser.value.id, repository.chat)
+        ChatViewModel(
+            match.id,
+            repository.currentUser.value.id,
+            repository.chat,
+            shareActivity = !repository.privacy.value.hideActivity
+        )
     }
     val chatState by chatViewModel.state.collectAsState()
     val messages = chatState.messages
@@ -130,22 +136,13 @@ fun ChatScreen(
                                     phoneVerified = match.matchedUser.phoneVerified
                                 )
                             }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.extendedColors.muted,
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Text(
-                                    text = "${match.matchedUser.city} • Private EU Storage",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = MaterialTheme.extendedColors.muted
-                                )
-                            }
+                            ChatPeerStatus(
+                                typing = chatState.peerTyping,
+                                online = chatState.peerOnline,
+                                activity = match.matchedUser.activity,
+                                fallback = match.matchedUser.city,
+                                lang = lang
+                            )
                         }
                     }
                 },
@@ -378,7 +375,12 @@ fun ChatScreen(
                     ) {
                         OutlinedTextField(
                             value = messageInput,
-                            onValueChange = { if (it.length <= 2000) messageInput = it },
+                            onValueChange = {
+                                if (it.length <= 2000) {
+                                    messageInput = it
+                                    chatViewModel.onDraftChanged(it)
+                                }
+                            },
                             placeholder = { Text(Localization.t("type_message", lang), fontSize = 14.sp) },
                             maxLines = 4,
                             shape = RoundedCornerShape(24.dp),

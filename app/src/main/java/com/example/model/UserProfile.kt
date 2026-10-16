@@ -42,7 +42,9 @@ data class UserProfile(
     val isAdmin: Boolean = false,
     val isBanned: Boolean = false,
     val countryOk: Boolean = true,
-    val respectScore: Int = 100
+    val respectScore: Int = 100,
+    /** "today", "week" or "" (unknown or hidden); never an exact time. */
+    val activity: String = ""
 )
 
 /** A question users can answer on their profile; [key] is what the database stores. */

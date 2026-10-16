@@ -2,6 +2,7 @@ package com.example
 
 import com.example.data.ChatApi
 import com.example.data.ChatTime
+import com.example.data.PeerEvent
 import com.example.model.ChatMessage
 import com.example.ui.screens.ChatSafety
 import com.example.ui.viewmodel.ChatViewModel
@@ -34,6 +35,12 @@ private class FakeChatApi(history: List<ChatMessage>) : ChatApi {
     }
     override suspend fun markRead(matchId: String) { markReadCalls++ }
     override fun changes(matchId: String): Flow<ChatMessage> = live
+
+    val peer = MutableSharedFlow<PeerEvent>()
+    var peerWatched = false
+    var typingSent = 0
+    override fun peerActivity(matchId: String): Flow<PeerEvent> { peerWatched = true; return peer }
+    override suspend fun sendTyping(matchId: String) { typingSent++ }
 }
 
 private const val ME = "me"
@@ -132,5 +139,47 @@ class ChatViewModelTest {
         assertEquals("12.10.25", ChatTime.format("2025-10-12T14:20:00Z", today, ZoneOffset.UTC))
         assertEquals("14:20", ChatTime.format("2026-10-15 14:20:00.123+00", today, ZoneOffset.UTC))
         assertEquals("", ChatTime.format("not a date", today, ZoneOffset.UTC))
+    }
+
+    @Test
+    fun peerOnlineAndTypingAreShownAndTypingFades() = kotlinx.coroutines.test.runTest {
+        val api = FakeChatApi(emptyList())
+        val vm = ChatViewModel("m1", ME, api)
+        api.peer.emit(PeerEvent.Online(true))
+        assertTrue(vm.state.value.peerOnline)
+        api.peer.emit(PeerEvent.Typing)
+        assertTrue(vm.state.value.peerTyping)
+        testScheduler.advanceTimeBy(ChatViewModel.TYPING_SHOWN_MS + 1)
+        assertFalse("typing disappears after a few seconds", vm.state.value.peerTyping)
+        api.peer.emit(PeerEvent.Typing)
+        api.live.emit(msg("9", ANNA, "Hallo", "2026-10-15T10:00:00Z"))
+        assertFalse("their message ends their typing", vm.state.value.peerTyping)
+        api.peer.emit(PeerEvent.Online(false))
+        assertFalse(vm.state.value.peerOnline)
+    }
+
+    @Test
+    fun typingSignalIsThrottled() {
+        var now = 0L
+        val api = FakeChatApi(emptyList())
+        val vm = ChatViewModel("m1", ME, api, nowMs = { now })
+        now = 10_000; vm.onDraftChanged("H")
+        now = 11_000; vm.onDraftChanged("Ha")
+        now = 12_000; vm.onDraftChanged("Hal")
+        assertEquals(1, api.typingSent)
+        now = 13_500; vm.onDraftChanged("Hall")
+        assertEquals(2, api.typingSent)
+        vm.onDraftChanged("   ")
+        assertEquals(2, api.typingSent)
+    }
+
+    @Test
+    fun hiddenActivitySharesAndSeesNothing() {
+        val api = FakeChatApi(emptyList())
+        val vm = ChatViewModel("m1", ME, api, shareActivity = false, nowMs = { 99_000 })
+        vm.onDraftChanged("Hallo")
+        assertFalse("does not join presence", api.peerWatched)
+        assertEquals(0, api.typingSent)
+        assertFalse(vm.state.value.peerOnline)
     }
 }

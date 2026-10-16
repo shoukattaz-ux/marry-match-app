@@ -37,6 +37,7 @@ import com.example.core.Localization
 import com.example.data.MarryMatchRepository
 import com.example.model.MatchItem
 import com.example.model.UserProfile
+import com.example.ui.components.ActivityLabel
 import com.example.ui.components.MarryPrimaryButton
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.extendedColors
@@ -130,6 +131,7 @@ fun LikesAndMatchesScreen(
                             MatchRow(
                                 match = match,
                                 newMatchText = Localization.t("new_match_say_hello", lang),
+                                lang = lang,
                                 onClick = { onOpenChat(match) }
                             )
                         }
@@ -147,6 +149,7 @@ fun LikesAndMatchesScreen(
 fun MatchRow(
     match: MatchItem,
     newMatchText: String,
+    lang: AppLanguage,
     onClick: () -> Unit
 ) {
     Surface(
@@ -189,6 +192,9 @@ fun MatchRow(
                         selfieVerified = match.matchedUser.selfieVerified,
                         phoneVerified = match.matchedUser.phoneVerified
                     )
+                }
+                if (match.matchedUser.activity.isNotBlank()) {
+                    ActivityLabel(match.matchedUser.activity, lang)
                 }
 
                 Spacer(modifier = Modifier.height(2.dp))

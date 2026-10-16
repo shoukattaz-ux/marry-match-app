@@ -379,7 +379,16 @@ class MarryMatchRepository {
             _authState.value = AuthState.LOGGED_IN
             refreshMatches()
             registerPush()
+            onAppActive()
+            repositoryScope.launch { loadPrivacy() }  // the chat needs hideActivity
         }
+    }
+
+    /** The app was opened or came back to the screen: counts as "active today". */
+    fun onAppActive() {
+        val api = _account ?: return
+        if (_currentUser.value.id.isBlank()) return
+        repositoryScope.launch { runCatching { api.touchActivity() } }
     }
 
     /** Links this phone to the account for pushes (language decides the push texts). */
@@ -478,6 +487,7 @@ class MarryMatchRepository {
     fun onOnboardingFinished() {
         _authState.value = AuthState.LOGGED_IN
         registerPush()
+        onAppActive()
     }
 
     private fun applyProfile(profile: MyProfile) {

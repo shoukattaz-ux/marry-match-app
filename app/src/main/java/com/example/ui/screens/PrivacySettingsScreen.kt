@@ -103,6 +103,14 @@ fun PrivacySettingsScreen(
                     onCheckedChange = { on -> change { it.copy(verifiedViewersOnly = on) } },
                     testTag = "toggle_visible_only_verified"
                 )
+                HorizontalDivider()
+                PrivacyToggleRow(
+                    title = Localization.t("privacy_show_activity", lang),
+                    description = Localization.t("privacy_show_activity_desc", lang),
+                    checked = !privacy.hideActivity,
+                    onCheckedChange = { on -> change { it.copy(hideActivity = !on) } },
+                    testTag = "toggle_show_activity"
+                )
             }
 
             Text(Localization.t("privacy_section_fields", lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)

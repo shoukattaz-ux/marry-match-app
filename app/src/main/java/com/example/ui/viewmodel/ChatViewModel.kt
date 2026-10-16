@@ -4,7 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.ChatApi
 import com.example.data.ChatTime
+import com.example.data.PeerEvent
 import com.example.model.ChatMessage
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,7 +21,11 @@ data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val sending: Boolean = false,
     /** Localization key of an error to show, or null. */
-    val errorKey: String? = null
+    val errorKey: String? = null,
+    /** The other person has this chat open right now. */
+    val peerOnline: Boolean = false,
+    /** The other person is typing (shown for a few seconds after each signal). */
+    val peerTyping: Boolean = false
 )
 
 /**
@@ -28,16 +35,55 @@ data class ChatUiState(
 class ChatViewModel(
     private val matchId: String,
     private val myUserId: String,
-    private val api: ChatApi?
+    private val api: ChatApi?,
+    /** False when the user hides their activity: then nobody sees them online and they see no one. */
+    private val shareActivity: Boolean = true,
+    private val nowMs: () -> Long = System::currentTimeMillis
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
     private var liveStarted = false
+    private var typingShownJob: Job? = null
+    private var lastTypingSentMs = 0L
 
     init {
         load()
+        if (shareActivity) watchPeer()
+    }
+
+    private fun watchPeer() {
+        val chat = api ?: return
+        viewModelScope.launch {
+            chat.peerActivity(matchId)
+                .catch { /* presence is a nice-to-have; the chat works without it */ }
+                .collect { event ->
+                    when (event) {
+                        is PeerEvent.Online -> _state.update {
+                            it.copy(peerOnline = event.online, peerTyping = it.peerTyping && event.online)
+                        }
+                        PeerEvent.Typing -> {
+                            _state.update { it.copy(peerOnline = true, peerTyping = true) }
+                            typingShownJob?.cancel()
+                            typingShownJob = viewModelScope.launch {
+                                delay(TYPING_SHOWN_MS)
+                                _state.update { it.copy(peerTyping = false) }
+                            }
+                        }
+                    }
+                }
+        }
+    }
+
+    /** Call on every change of the text field; sends at most one typing signal every few seconds. */
+    fun onDraftChanged(text: String) {
+        val chat = api ?: return
+        if (!shareActivity || text.isBlank()) return
+        val now = nowMs()
+        if (now - lastTypingSentMs < TYPING_SEND_EVERY_MS) return
+        lastTypingSentMs = now
+        viewModelScope.launch { runCatching { chat.sendTyping(matchId) } }
     }
 
     fun load() {
@@ -63,7 +109,11 @@ class ChatViewModel(
                 .collect { message ->
                     // A live update can repeat a message we already have; only new ones are marked read.
                     val isNew = _state.value.messages.none { it.id == message.id }
-                    _state.update { s -> s.copy(messages = merge(s.messages, listOf(message))) }
+                    // A new message from them ends their "typing".
+                    val fromPeer = isNew && message.senderId != myUserId
+                    _state.update { s ->
+                        s.copy(messages = merge(s.messages, listOf(message)), peerTyping = s.peerTyping && !fromPeer)
+                    }
                     if (isNew) markIncomingRead(listOf(message))
                 }
         }
@@ -96,6 +146,8 @@ class ChatViewModel(
 
     companion object {
         const val MAX_LENGTH = 2000
+        const val TYPING_SHOWN_MS = 4_000L
+        const val TYPING_SEND_EVERY_MS = 3_000L
 
         /** Adds or replaces messages by id (a live update can repeat a message we already have). */
         fun merge(current: List<ChatMessage>, incoming: List<ChatMessage>): List<ChatMessage> {

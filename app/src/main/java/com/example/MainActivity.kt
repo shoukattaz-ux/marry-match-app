@@ -25,4 +25,10 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Coming back to the app counts as being active (only after login; throttled on the server).
+        (application as MarryMatchApplication).repository.onAppActive()
+    }
 }

@@ -355,6 +355,10 @@ fun ProfileHingeCard(
                             style = MaterialTheme.typography.bodyMedium.copy(color = Color.White.copy(alpha = 0.9f))
                         )
                     }
+                    if (profile.activity.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        ActivityLabel(profile.activity, lang, onDark = true)
+                    }
                 }
                 if (profile.photos.isNotEmpty()) {
                     PhotoHeart(enabled, Modifier.align(Alignment.TopEnd)) { onLikeTarget(photoTarget(0)) }

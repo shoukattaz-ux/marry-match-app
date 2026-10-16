@@ -82,6 +82,7 @@ private data class CardDto(
     @SerialName("height_cm") val heightCm: Int? = null,
     @SerialName("selfie_verified") val selfieVerified: Boolean = false,
     @SerialName("phone_verified") val phoneVerified: Boolean = false,
+    val active: String? = null,
     val photos: List<CardPhotoDto> = emptyList(),
     val prompts: List<CardPromptDto> = emptyList()
 )
@@ -106,6 +107,7 @@ private data class MatchDto(
     val photo: String? = null,
     @SerialName("selfie_verified") val selfieVerified: Boolean = false,
     @SerialName("phone_verified") val phoneVerified: Boolean = false,
+    val active: String? = null,
     @SerialName("last_message") val lastMessage: String? = null,
     @SerialName("last_message_at") val lastMessageAt: String? = null,
     val unread: Int = 0
@@ -171,6 +173,7 @@ class SupabaseDiscoveryService(
                     photos = listOfNotNull(m.photo?.let { photoLinks.url(ProfileService.thumbPathFor(it)) ?: photoLinks.url(it) }),
                     selfieVerified = m.selfieVerified,
                     phoneVerified = m.phoneVerified,
+                    activity = m.active.orEmpty(),
                     languages = emptyList(),
                     interests = emptyList()
                 ),
@@ -242,7 +245,8 @@ class SupabaseDiscoveryService(
                 )
             },
             selfieVerified = selfieVerified,
-            phoneVerified = phoneVerified
+            phoneVerified = phoneVerified,
+            activity = active.orEmpty()
         )
     }
 }

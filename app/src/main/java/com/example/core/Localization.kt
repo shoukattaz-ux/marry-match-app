@@ -386,7 +386,13 @@ object Localization {
         "notify_likes" to "Someone likes you",
         "notifications_blocked" to "Notifications are turned off for MarryMatch on this phone.",
         "notifications_open_settings" to "Turn on in phone settings",
-        "notifications_no_text" to "Notifications never show message text, only who wrote."
+        "notifications_no_text" to "Notifications never show message text, only who wrote.",
+        "active_today" to "Active today",
+        "active_week" to "Active this week",
+        "chat_online" to "Online",
+        "chat_typing" to "typing…",
+        "privacy_show_activity" to "Show when I'm active",
+        "privacy_show_activity_desc" to "Others see \"Active today\" or \"Active this week\", and \"Online\" or \"typing…\" in an open chat with a match. Never exact times. If you turn this off, you also don't see others' activity."
     )
 
     private val deStrings = mapOf(
@@ -763,6 +769,12 @@ object Localization {
         "notify_likes" to "Jemand mag Sie",
         "notifications_blocked" to "Benachrichtigungen sind für MarryMatch auf diesem Handy ausgeschaltet.",
         "notifications_open_settings" to "In den Handy-Einstellungen einschalten",
-        "notifications_no_text" to "Benachrichtigungen zeigen nie den Nachrichtentext, nur wer geschrieben hat."
+        "notifications_no_text" to "Benachrichtigungen zeigen nie den Nachrichtentext, nur wer geschrieben hat.",
+        "active_today" to "Heute aktiv",
+        "active_week" to "Diese Woche aktiv",
+        "chat_online" to "Online",
+        "chat_typing" to "schreibt…",
+        "privacy_show_activity" to "Zeigen, wann ich aktiv bin",
+        "privacy_show_activity_desc" to "Andere sehen „Heute aktiv“ oder „Diese Woche aktiv“ und in einem offenen Chat mit einem Match „Online“ oder „schreibt…“. Nie genaue Uhrzeiten. Wenn Sie das ausschalten, sehen Sie auch die Aktivität anderer nicht."
     )
 }
