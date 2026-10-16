@@ -2,11 +2,11 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Sends one push through Firebase Cloud Messaging (HTTP v1).
 // Called only by database triggers (migration 013b) with the x-push-secret header, never by the
-// app. POST { user_id, kind: "match" | "message" | "like", data: { match_id?, name? } }.
+// app. POST { user_id, kind: "match" | "message" | "like" | "your_turn" | "expiring", data: { match_id?, name? } }.
 // The Firebase key comes from the FIREBASE_SERVICE_ACCOUNT_JSON secret and never leaves here.
 // Pushes never contain message text: only who wrote, so nothing private shows on a lock screen.
 
-type Kind = "match" | "message" | "like";
+type Kind = "match" | "message" | "like" | "your_turn" | "expiring";
 type Lang = "en" | "de";
 
 const TEXTS: Record<Kind, Record<Lang, (name: string) => { title: string; body: string }>> = {
@@ -21,6 +21,15 @@ const TEXTS: Record<Kind, Record<Lang, (name: string) => { title: string; body: 
   like: {
     en: () => ({ title: "Someone likes you", body: "Open MarryMatch to see who." }),
     de: () => ({ title: "Jemand mag Sie", body: "Öffnen Sie MarryMatch, um zu sehen, wer." }),
+  },
+  // Daily reminders (migration 017).
+  your_turn: {
+    en: (n) => ({ title: "Your turn", body: `${n} is waiting for your answer.` }),
+    de: (n) => ({ title: "Sie sind dran", body: `${n} wartet auf Ihre Antwort.` }),
+  },
+  expiring: {
+    en: (n) => ({ title: "Your match expires tomorrow", body: `Say hello to ${n} before it's too late.` }),
+    de: (n) => ({ title: "Ihr Match läuft morgen ab", body: `Sagen Sie ${n} Hallo, bevor es zu spät ist.` }),
   },
 };
 const SOMEONE: Record<Lang, string> = { en: "Someone", de: "Jemand" };

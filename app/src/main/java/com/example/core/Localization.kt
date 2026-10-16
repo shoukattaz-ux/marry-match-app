@@ -391,6 +391,9 @@ object Localization {
         "active_week" to "Active this week",
         "chat_online" to "Online",
         "chat_typing" to "typing…",
+        "match_expires_in" to "Expires in %1\$d days – say hello!",
+        "match_expires_today" to "Expires within a day – say hello now!",
+        "chat_match_expired" to "This match has expired because nobody wrote within 7 days.",
         "privacy_show_activity" to "Show when I'm active",
         "privacy_show_activity_desc" to "Others see \"Active today\" or \"Active this week\", and \"Online\" or \"typing…\" in an open chat with a match. Never exact times. If you turn this off, you also don't see others' activity."
     )
@@ -774,6 +777,9 @@ object Localization {
         "active_week" to "Diese Woche aktiv",
         "chat_online" to "Online",
         "chat_typing" to "schreibt…",
+        "match_expires_in" to "Läuft in %1\$d Tagen ab – sagen Sie Hallo!",
+        "match_expires_today" to "Läuft in einem Tag ab – jetzt Hallo sagen!",
+        "chat_match_expired" to "Dieses Match ist abgelaufen, weil 7 Tage lang niemand geschrieben hat.",
         "privacy_show_activity" to "Zeigen, wann ich aktiv bin",
         "privacy_show_activity_desc" to "Andere sehen „Heute aktiv“ oder „Diese Woche aktiv“ und in einem offenen Chat mit einem Match „Online“ oder „schreibt…“. Nie genaue Uhrzeiten. Wenn Sie das ausschalten, sehen Sie auch die Aktivität anderer nicht."
     )

@@ -2,6 +2,7 @@ package com.example
 
 import com.example.data.ChatApi
 import com.example.data.ChatTime
+import com.example.data.MatchExpiry
 import com.example.data.PeerEvent
 import com.example.model.ChatMessage
 import com.example.ui.screens.ChatSafety
@@ -181,5 +182,23 @@ class ChatViewModelTest {
         assertFalse("does not join presence", api.peerWatched)
         assertEquals(0, api.typingSent)
         assertFalse(vm.state.value.peerOnline)
+    }
+
+    @Test
+    fun expiredMatchHasItsOwnMessage() {
+        val api = FakeChatApi(emptyList()).apply { failSendWith = "match_expired" }
+        val vm = ChatViewModel("m1", ME, api)
+        vm.send("Hi")
+        assertEquals("chat_match_expired", vm.state.value.errorKey)
+    }
+
+    @Test
+    fun daysLeftBeforeASilentMatchExpires() {
+        val now = java.time.Instant.parse("2026-10-16T12:00:00Z")
+        assertEquals(7, MatchExpiry.daysLeft("2026-10-23T12:00:00Z", now))
+        assertEquals(3, MatchExpiry.daysLeft("2026-10-18T13:00:00Z", now))
+        assertEquals(1, MatchExpiry.daysLeft("2026-10-16T18:00:00+00:00", now))
+        assertEquals(1, MatchExpiry.daysLeft("2026-10-16T11:00:00Z", now))
+        assertEquals(null, MatchExpiry.daysLeft("not a date", now))
     }
 }

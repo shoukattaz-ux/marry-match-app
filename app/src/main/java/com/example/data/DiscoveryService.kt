@@ -46,7 +46,9 @@ data class MatchSummary(
     val user: UserProfile,
     val lastMessage: String? = null,
     val lastMessageAt: String? = null,
-    val unreadCount: Int = 0
+    val unreadCount: Int = 0,
+    /** Set while nobody has written yet: the match disappears at this time (7 days after matching). */
+    val expiresAt: String? = null
 )
 
 /** Discovery on the server. An interface so the Discover logic can be tested with a fake. */
@@ -108,6 +110,7 @@ private data class MatchDto(
     @SerialName("selfie_verified") val selfieVerified: Boolean = false,
     @SerialName("phone_verified") val phoneVerified: Boolean = false,
     val active: String? = null,
+    @SerialName("expires_at") val expiresAt: String? = null,
     @SerialName("last_message") val lastMessage: String? = null,
     @SerialName("last_message_at") val lastMessageAt: String? = null,
     val unread: Int = 0
@@ -179,7 +182,8 @@ class SupabaseDiscoveryService(
                 ),
                 lastMessage = m.lastMessage,
                 lastMessageAt = m.lastMessageAt,
-                unreadCount = m.unread
+                unreadCount = m.unread,
+                expiresAt = m.expiresAt
             )
         }
     }

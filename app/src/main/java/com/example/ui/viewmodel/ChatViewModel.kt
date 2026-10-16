@@ -129,7 +129,12 @@ class ChatViewModel(
                 val sent = chat.send(matchId, body)
                 _state.update { s -> s.copy(sending = false, messages = merge(s.messages, listOf(sent))) }
             } catch (e: Throwable) {
-                val key = if (e.message?.contains("message_rate_limit") == true) "chat_rate_limited" else "chat_send_failed"
+                val msg = e.message.orEmpty()
+                val key = when {
+                    "message_rate_limit" in msg -> "chat_rate_limited"
+                    "match_expired" in msg -> "chat_match_expired"
+                    else -> "chat_send_failed"
+                }
                 _state.update { it.copy(sending = false, errorKey = key) }
             }
         }

@@ -6,7 +6,9 @@ data class MatchItem(
     val matchedAt: String,
     val lastMessage: String,
     val lastMessageTime: String,
-    val unread: Boolean = false
+    val unread: Boolean = false,
+    /** Days left before a match nobody has written to disappears (null once someone wrote). */
+    val expiresInDays: Int? = null
 )
 
 data class ChatMessage(

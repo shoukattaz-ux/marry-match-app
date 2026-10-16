@@ -186,6 +186,15 @@ class SupabaseChatService(
     }
 }
 
+/** Days left for a match nobody has written to yet (rounded up, at least 1 while it exists). */
+object MatchExpiry {
+    fun daysLeft(expiresAtIso: String, now: Instant = Instant.now()): Int? {
+        val end = ChatTime.parse(expiresAtIso) ?: return null
+        val hours = java.time.Duration.between(now, end).toHours()
+        return ((hours + 23) / 24).toInt().coerceAtLeast(1)
+    }
+}
+
 /** Formats server timestamps for chat: "14:20" today, "12.10." earlier this year, else "12.10.25". */
 object ChatTime {
     fun format(iso: String, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): String {
