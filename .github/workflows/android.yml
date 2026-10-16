@@ -31,6 +31,21 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
+      # Debug builds are signed with debug.keystore (not in git). Keep one in the Actions cache so
+      # every APK has the same signature and installs over the previous one.
+      - name: Restore debug keystore
+        id: keystore
+        uses: actions/cache@v4
+        with:
+          path: debug.keystore
+          key: debug-keystore-v1
+
+      - name: Create debug keystore
+        if: steps.keystore.outputs.cache-hit != 'true'
+        run: >
+          keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey
+          -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+
       # Supabase URL and the publishable key come from .env.example (public values; the server
       # protects the data with Row Level Security). No secrets are needed for this build.
       - name: Unit tests
