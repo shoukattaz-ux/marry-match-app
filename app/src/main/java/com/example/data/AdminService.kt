@@ -31,7 +31,10 @@ data class AdminStats(
     @SerialName("pending_selfies") val pendingSelfies: Int = 0,
     @SerialName("open_reports") val openReports: Int = 0,
     val banned: Int = 0,
-    @SerialName("needs_review") val needsReview: Int = 0
+    @SerialName("needs_review") val needsReview: Int = 0,
+    /** Couples where both confirmed "We met", and meetings someone marked unsafe (last 30 days). */
+    @SerialName("met_couples") val metCouples: Int = 0,
+    @SerialName("met_unsafe_30d") val metUnsafe30d: Int = 0
 )
 
 @Serializable

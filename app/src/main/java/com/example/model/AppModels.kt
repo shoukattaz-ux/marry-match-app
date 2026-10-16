@@ -10,7 +10,10 @@ data class MatchItem(
     /** Days left before a match nobody has written to disappears (null once someone wrote). */
     val expiresInDays: Int? = null,
     /** One of the two has a chaperone (family member) who can read this chat. */
-    val chaperoned: Boolean = false
+    val chaperoned: Boolean = false,
+    /** "We met": I confirmed meeting in person / the other person did. */
+    val iMet: Boolean = false,
+    val theyMet: Boolean = false
 )
 
 data class ChatMessage(

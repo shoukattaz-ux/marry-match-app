@@ -472,7 +472,9 @@ class MarryMatchRepository {
                     lastMessageTime = m.lastMessageAt?.let { ChatTime.format(it) }.orEmpty(),
                     unread = m.unreadCount > 0,
                     expiresInDays = m.expiresAt?.let { MatchExpiry.daysLeft(it) },
-                    chaperoned = m.chaperoned
+                    chaperoned = m.chaperoned,
+                    iMet = m.iMet,
+                    theyMet = m.theyMet
                 )
             }
             _receivedLikesCount.value = api.receivedLikesCount()

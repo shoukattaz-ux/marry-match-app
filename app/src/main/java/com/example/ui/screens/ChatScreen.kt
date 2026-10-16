@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.FamilyRestroom
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
@@ -66,7 +67,9 @@ fun ChatScreen(
             match.id,
             repository.currentUser.value.id,
             repository.chat,
-            shareActivity = !repository.privacy.value.hideActivity
+            shareActivity = !repository.privacy.value.hideActivity,
+            iMet = match.iMet,
+            theyMet = match.theyMet
         )
     }
     val chatState by chatViewModel.state.collectAsState()
@@ -78,6 +81,7 @@ fun ChatScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showPrivacyInfoDialog by remember { mutableStateOf(false) }
     var showUnmatchConfirm by remember { mutableStateOf(false) }
+    var showWeMet by remember { mutableStateOf(false) }
     var showBlockConfirm by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
@@ -173,6 +177,14 @@ fun ChatScreen(
                             onClick = {
                                 showMenu = false
                                 showPrivacyInfoDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(Localization.t(if (chatState.iMet) "we_met_update" else "we_met_menu", lang)) },
+                            leadingIcon = { Icon(Icons.Default.EventAvailable, contentDescription = null) },
+                            onClick = {
+                                showMenu = false
+                                showWeMet = true
                             }
                         )
                         DropdownMenuItem(
@@ -328,6 +340,30 @@ fun ChatScreen(
                         message = msg,
                         isMe = isMe,
                         onLongPress = if (isMe) null else ({ reportedMessage = msg })
+                    )
+                }
+            }
+
+            if (chatState.showMeetingPrompt) {
+                MeetingPromptCard(
+                    name = match.matchedUser.displayName,
+                    theyMet = chatState.theyMet,
+                    lang = lang,
+                    onYes = { showWeMet = true },
+                    onNotYet = chatViewModel::dismissMeetingPrompt
+                )
+            }
+            chatState.meetingDoneKey?.let { key ->
+                LaunchedEffect(key) {
+                    kotlinx.coroutines.delay(4_000)
+                    chatViewModel.clearMeetingDone()
+                }
+                Surface(color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.fillMaxWidth().clickable { chatViewModel.clearMeetingDone() }) {
+                    Text(
+                        String.format(Localization.t(key, lang), match.matchedUser.displayName),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("we_met_done")
                     )
                 }
             }
@@ -492,6 +528,22 @@ fun ChatScreen(
         )
     }
 
+    if (showWeMet) {
+        WeMetDialog(
+            name = match.matchedUser.displayName,
+            lang = lang,
+            saving = chatState.meetingSaving,
+            onDismiss = { showWeMet = false }
+        ) { feeling ->
+            chatViewModel.confirmMeeting(feeling) {
+                showWeMet = false
+                repository.refreshMatches()
+                // Feeling unsafe should always lead to the report form.
+                if (feeling == "unsafe") onOpenReport()
+            }
+        }
+    }
+
     // Unmatch Confirmation Dialog
     if (showUnmatchConfirm) {
         AlertDialog(
@@ -633,4 +685,60 @@ fun ChatBubble(
             }
         }
     }
+}
+
+/** "Have you met in person?" above the input, once it makes sense to ask. */
+@Composable
+private fun MeetingPromptCard(name: String, theyMet: Boolean, lang: AppLanguage, onYes: () -> Unit, onNotYet: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth().testTag("we_met_prompt")
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.EventAvailable, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                String.format(Localization.t(if (theyMet) "we_met_prompt_they" else "we_met_prompt", lang), name),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onYes) { Text(Localization.t("we_met_yes", lang), fontWeight = FontWeight.Bold) }
+            TextButton(onClick = onNotYet) { Text(Localization.t("we_met_not_yet", lang)) }
+        }
+    }
+}
+
+/** How did the meeting go? The other person never sees the answer. */
+@Composable
+private fun WeMetDialog(name: String, lang: AppLanguage, saving: Boolean, onDismiss: () -> Unit, onChoose: (String) -> Unit) {
+    val options = listOf(
+        "great" to "we_met_great",
+        "okay" to "we_met_okay",
+        "not_for_me" to "we_met_not_for_me",
+        "unsafe" to "we_met_unsafe"
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(String.format(Localization.t("we_met_title", lang), name)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(Localization.t("we_met_private", lang), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+                options.forEach { (feeling, key) ->
+                    OutlinedButton(
+                        onClick = { onChoose(feeling) },
+                        enabled = !saving,
+                        modifier = Modifier.fillMaxWidth().testTag("we_met_$feeling"),
+                        colors = if (feeling == "unsafe") ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                                 else ButtonDefaults.outlinedButtonColors()
+                    ) { Text(Localization.t(key, lang)) }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(Localization.t("cancel", lang)) } }
+    )
 }

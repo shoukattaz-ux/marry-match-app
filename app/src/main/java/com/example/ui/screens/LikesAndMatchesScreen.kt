@@ -207,6 +207,14 @@ fun MatchRow(
                     color = if (match.unread) MaterialTheme.colorScheme.onSurface else MaterialTheme.extendedColors.muted,
                     fontWeight = if (match.unread) FontWeight.SemiBold else FontWeight.Normal
                 )
+                if (match.iMet && match.theyMet) {
+                    Text(
+                        text = Localization.t("we_met_badge", lang),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
                 match.expiresInDays?.let { days ->
                     // Like Hinge/Bumble: a silent match disappears after 7 days.
                     Text(

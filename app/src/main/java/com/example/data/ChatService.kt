@@ -62,7 +62,17 @@ interface ChatApi {
 
     /** Tells the other person (if they have the chat open) that I am typing. */
     suspend fun sendTyping(matchId: String) {}
+
+    /**
+     * "We met": confirms meeting in person and how it went ("great", "okay", "not_for_me",
+     * "unsafe"). The other person never sees the answer. Returns true when both confirmed.
+     */
+    suspend fun confirmMeeting(matchId: String, feeling: String): Boolean =
+        throw UnsupportedOperationException("confirm_meeting")
 }
+
+@Serializable
+internal data class MeetingResult(@SerialName("both_met") val bothMet: Boolean = false)
 
 @Serializable
 internal data class MessageRow(
@@ -88,6 +98,12 @@ class SupabaseChatService(
     private val client: SupabaseClient,
     private val currentUserId: () -> String
 ) : ChatApi {
+
+    override suspend fun confirmMeeting(matchId: String, feeling: String): Boolean =
+        client.postgrest.rpc("confirm_meeting", buildJsonObject {
+            put("p_match_id", matchId)
+            put("p_feeling", feeling)
+        }).decodeAs<MeetingResult>().bothMet
 
     override suspend fun loadMessages(matchId: String): List<ChatMessage> =
         client.from("messages")

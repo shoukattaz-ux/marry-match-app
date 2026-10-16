@@ -189,9 +189,10 @@ private fun AdminOverview(stats: AdminStats?, loading: Boolean, lang: AppLanguag
                 listOf("admin_stat_active" to stats.active7d, "admin_stat_profiles" to stats.profilesDone),
                 listOf("admin_stat_verified" to stats.verified, "admin_stat_banned" to stats.banned),
                 listOf("admin_stat_selfies" to stats.pendingSelfies, "admin_stat_reports" to stats.openReports),
-                listOf("admin_stat_needs_review" to stats.needsReview)
+                listOf("admin_stat_needs_review" to stats.needsReview, "admin_stat_met_unsafe" to stats.metUnsafe30d),
+                listOf("admin_stat_met_couples" to stats.metCouples)
             )
-            val alerts = setOf("admin_stat_selfies", "admin_stat_reports", "admin_stat_needs_review")
+            val alerts = setOf("admin_stat_selfies", "admin_stat_reports", "admin_stat_needs_review", "admin_stat_met_unsafe")
             items(rows) { row ->
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     row.forEach { (key, value) ->

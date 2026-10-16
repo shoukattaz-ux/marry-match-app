@@ -42,6 +42,15 @@ private class FakeChatApi(history: List<ChatMessage>) : ChatApi {
     var typingSent = 0
     override fun peerActivity(matchId: String): Flow<PeerEvent> { peerWatched = true; return peer }
     override suspend fun sendTyping(matchId: String) { typingSent++ }
+
+    val meetings = mutableListOf<String>()
+    var otherConfirmed = false
+    var failMeeting = false
+    override suspend fun confirmMeeting(matchId: String, feeling: String): Boolean {
+        if (failMeeting) throw IllegalStateException("offline")
+        meetings += feeling
+        return otherConfirmed
+    }
 }
 
 private const val ME = "me"
@@ -200,5 +209,50 @@ class ChatViewModelTest {
         assertEquals(1, MatchExpiry.daysLeft("2026-10-16T18:00:00+00:00", now))
         assertEquals(1, MatchExpiry.daysLeft("2026-10-16T11:00:00Z", now))
         assertEquals(null, MatchExpiry.daysLeft("not a date", now))
+    }
+
+    @Test
+    fun meetingPromptWaitsForARealConversation() {
+        val few = FakeChatApi(List(5) { msg("h$it", ANNA, "hi", "2026-10-15T09:0$it:00Z") })
+        assertFalse(ChatViewModel("m1", ME, few).state.value.showMeetingPrompt)
+
+        val many = FakeChatApi(List(ChatViewModel.MEETING_PROMPT_AFTER_MESSAGES) { msg("h$it", ANNA, "hi", "2026-10-15T09:00:${(it % 60).toString().padStart(2, '0')}Z") })
+        assertTrue(ChatViewModel("m1", ME, many).state.value.showMeetingPrompt)
+    }
+
+    @Test
+    fun meetingPromptShowsAtOnceWhenTheOtherPersonConfirmed() {
+        val vm = ChatViewModel("m1", ME, FakeChatApi(emptyList()), theyMet = true)
+        assertTrue(vm.state.value.showMeetingPrompt)
+        vm.dismissMeetingPrompt()
+        assertFalse(vm.state.value.showMeetingPrompt)
+    }
+
+    @Test
+    fun confirmingAMeetingSavesTheFeelingAndHidesThePrompt() {
+        val api = FakeChatApi(emptyList()).apply { otherConfirmed = true }
+        val vm = ChatViewModel("m1", ME, api, theyMet = true)
+        var both: Boolean? = null
+        vm.confirmMeeting("great") { both = it }
+        assertEquals(listOf("great"), api.meetings)
+        assertEquals(true, both)
+        assertTrue(vm.state.value.iMet)
+        assertFalse(vm.state.value.showMeetingPrompt)
+        assertEquals("we_met_both", vm.state.value.meetingDoneKey)
+    }
+
+    @Test
+    fun unknownFeelingsAreNotSentAndFailuresShowAnError() {
+        val api = FakeChatApi(emptyList())
+        val vm = ChatViewModel("m1", ME, api)
+        vm.confirmMeeting("amazing")
+        assertTrue(api.meetings.isEmpty())
+
+        api.failMeeting = true
+        var called = false
+        vm.confirmMeeting("okay") { called = true }
+        assertFalse(called)
+        assertFalse(vm.state.value.iMet)
+        assertEquals("we_met_failed", vm.state.value.errorKey)
     }
 }

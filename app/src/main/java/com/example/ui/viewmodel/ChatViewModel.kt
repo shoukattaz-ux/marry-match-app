@@ -25,8 +25,21 @@ data class ChatUiState(
     /** The other person has this chat open right now. */
     val peerOnline: Boolean = false,
     /** The other person is typing (shown for a few seconds after each signal). */
-    val peerTyping: Boolean = false
-)
+    val peerTyping: Boolean = false,
+    /** "We met": I confirmed meeting in person / the other person did. */
+    val iMet: Boolean = false,
+    val theyMet: Boolean = false,
+    val meetingSaving: Boolean = false,
+    /** The user closed the "Have you met?" card for this visit. */
+    val meetingPromptDismissed: Boolean = false,
+    /** Localization key of the thank-you shown after confirming, or null. */
+    val meetingDoneKey: String? = null
+) {
+    /** Ask "Have you met in person?" once the other person said so, or after a real conversation. */
+    val showMeetingPrompt: Boolean
+        get() = !iMet && !meetingPromptDismissed && !loading &&
+            (theyMet || messages.size >= ChatViewModel.MEETING_PROMPT_AFTER_MESSAGES)
+}
 
 /**
  * One conversation (blueprint Phase 7): loads the history, then receives new messages and
@@ -38,10 +51,12 @@ class ChatViewModel(
     private val api: ChatApi?,
     /** False when the user hides their activity: then nobody sees them online and they see no one. */
     private val shareActivity: Boolean = true,
-    private val nowMs: () -> Long = System::currentTimeMillis
+    private val nowMs: () -> Long = System::currentTimeMillis,
+    iMet: Boolean = false,
+    theyMet: Boolean = false
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(ChatUiState())
+    private val _state = MutableStateFlow(ChatUiState(iMet = iMet, theyMet = theyMet))
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
     private var liveStarted = false
@@ -144,6 +159,33 @@ class ChatViewModel(
         _state.update { it.copy(errorKey = null) }
     }
 
+    /** "We met" with how it went; [onSaved] gets true when both have now confirmed. */
+    fun confirmMeeting(feeling: String, onSaved: (bothMet: Boolean) -> Unit = {}) {
+        val chat = api ?: return
+        if (_state.value.meetingSaving || feeling !in MEETING_FEELINGS) return
+        _state.update { it.copy(meetingSaving = true, errorKey = null) }
+        viewModelScope.launch {
+            try {
+                val both = chat.confirmMeeting(matchId, feeling)
+                _state.update {
+                    it.copy(
+                        meetingSaving = false,
+                        iMet = true,
+                        theyMet = it.theyMet || both,
+                        meetingDoneKey = if (both) "we_met_both" else "we_met_thanks"
+                    )
+                }
+                onSaved(both)
+            } catch (e: Throwable) {
+                _state.update { it.copy(meetingSaving = false, errorKey = "we_met_failed") }
+            }
+        }
+    }
+
+    fun dismissMeetingPrompt() = _state.update { it.copy(meetingPromptDismissed = true) }
+
+    fun clearMeetingDone() = _state.update { it.copy(meetingDoneKey = null) }
+
     private suspend fun markIncomingRead(messages: List<ChatMessage>) {
         if (messages.none { it.senderId != myUserId && !it.isRead }) return
         runCatching { api?.markRead(matchId) }
@@ -153,6 +195,8 @@ class ChatViewModel(
         const val MAX_LENGTH = 2000
         const val TYPING_SHOWN_MS = 4_000L
         const val TYPING_SEND_EVERY_MS = 3_000L
+        const val MEETING_PROMPT_AFTER_MESSAGES = 30
+        val MEETING_FEELINGS = listOf("great", "okay", "not_for_me", "unsafe")
 
         /** Adds or replaces messages by id (a live update can repeat a message we already have). */
         fun merge(current: List<ChatMessage>, incoming: List<ChatMessage>): List<ChatMessage> {

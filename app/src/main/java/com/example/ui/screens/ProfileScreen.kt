@@ -37,6 +37,7 @@ import coil.compose.AsyncImage
 import com.example.core.AppConfig
 import com.example.core.AppLanguage
 import com.example.core.Localization
+import com.example.core.ProfileStrength
 import com.example.data.MarryMatchRepository
 import com.example.data.SelfieStatus
 import com.example.ui.components.*
@@ -156,6 +157,13 @@ fun ProfileScreen(
                     }
                 }
             }
+
+            ProfileStrengthCard(
+                strength = ProfileStrength.of(user),
+                lang = lang,
+                onOpenEditor = onOpenProfileCreation,
+                onOpenSelfie = onOpenSelfieVerification
+            )
 
             // Phase 4: Selfie Verification Card (Blue Tick)
             if (!user.selfieVerified) {
@@ -463,5 +471,58 @@ fun ProfileScreen(
                 }
             }
         )
+    }
+}
+
+/** Profile strength meter with the two most useful next steps; tapping a step opens the right screen. */
+@Composable
+private fun ProfileStrengthCard(
+    strength: ProfileStrength,
+    lang: AppLanguage,
+    onOpenEditor: () -> Unit,
+    onOpenSelfie: () -> Unit
+) {
+    val t: (String) -> String = { Localization.t(it, lang) }
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().testTag("profile_strength_card")
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(t("strength_title"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(
+                    "${strength.percent}% · ${t(strength.levelKey)}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("profile_strength_percent")
+                )
+            }
+            LinearProgressIndicator(
+                progress = { strength.percent / 100f },
+                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))
+            )
+            if (strength.tips.isEmpty()) {
+                Text(t("strength_all_done"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+            } else {
+                Text(t("strength_hint"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+                strength.tips.take(2).forEach { tip ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { if (tip.opensSelfie) onOpenSelfie() else onOpenEditor() }
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(t(tip.key), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Text("+${tip.points}%", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }

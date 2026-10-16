@@ -50,7 +50,9 @@ data class MatchSummary(
     /** Set while nobody has written yet: the match disappears at this time (7 days after matching). */
     val expiresAt: String? = null,
     /** One of the two has a chaperone who can read the chat. */
-    val chaperoned: Boolean = false
+    val chaperoned: Boolean = false,
+    val iMet: Boolean = false,
+    val theyMet: Boolean = false
 )
 
 /** Discovery on the server. An interface so the Discover logic can be tested with a fake. */
@@ -120,6 +122,8 @@ private data class MatchDto(
     val active: String? = null,
     @SerialName("expires_at") val expiresAt: String? = null,
     val chaperoned: Boolean = false,
+    @SerialName("i_met") val iMet: Boolean = false,
+    @SerialName("they_met") val theyMet: Boolean = false,
     @SerialName("last_message") val lastMessage: String? = null,
     @SerialName("last_message_at") val lastMessageAt: String? = null,
     val unread: Int = 0
@@ -197,7 +201,9 @@ class SupabaseDiscoveryService(
                 lastMessageAt = m.lastMessageAt,
                 unreadCount = m.unread,
                 expiresAt = m.expiresAt,
-                chaperoned = m.chaperoned
+                chaperoned = m.chaperoned,
+                iMet = m.iMet,
+                theyMet = m.theyMet
             )
         }
     }
