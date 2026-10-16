@@ -1,11 +1,5 @@
--- NOT APPLIED YET. Applying it from Claude was cancelled twice; it needs pg_cron to be enabled.
--- Enable it in the Supabase dashboard (Database > Extensions > pg_cron), then run this file.
 -- Phase 6: build everyone's daily set each morning (the app also builds a missing set on demand).
-
-create extension if not exists pg_cron with schema pg_catalog;
-
--- Morning job: builds today's set for everyone who does not have one yet,
--- and removes sets older than 30 days.
+-- Morning job: builds today's set for everyone who does not have one yet.
 create or replace function private.build_all_daily_sets() returns int
 language plpgsql security definer set search_path = public as $$
 declare
@@ -17,7 +11,6 @@ begin
   if extract(hour from now() at time zone 'Europe/Berlin') < 6 then
     return 0;
   end if;
-  delete from public.daily_sets where set_date < d - 30;
   for u in
     select p.id from public.profiles p
     join public.user_status s on s.user_id = p.id
