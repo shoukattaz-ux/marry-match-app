@@ -46,7 +46,8 @@ enum class ActiveSubScreen {
     ADMIN_PANEL,
     SELFIE_VERIFICATION,
     PRIVACY_SETTINGS,
-    PROFILE_CREATION
+    PROFILE_CREATION,
+    CHAPERONE
 }
 
 @Composable
@@ -105,6 +106,9 @@ fun MainApp(
         AuthState.ONBOARDING -> {
             OnboardingScreen(repository = repository)
         }
+        AuthState.CHAPERONE -> {
+            ChaperoneScreen(repository = repository, chaperoneOnly = true)
+        }
         AuthState.LOGGED_IN -> {
             AskForNotificationPermission()
             // Main Authenticated Experience
@@ -127,7 +131,8 @@ fun MainApp(
                             repository = repository,
                             onBack = { activeSubScreen = ActiveSubScreen.NONE },
                             onOpenSafety = { activeSubScreen = ActiveSubScreen.SAFETY_CENTER },
-                            onOpenPrivacySettings = { activeSubScreen = ActiveSubScreen.PRIVACY_SETTINGS }
+                            onOpenPrivacySettings = { activeSubScreen = ActiveSubScreen.PRIVACY_SETTINGS },
+                            onOpenChaperone = { activeSubScreen = ActiveSubScreen.CHAPERONE }
                         )
                     }
                     ActiveSubScreen.SAFETY_CENTER -> {
@@ -163,6 +168,13 @@ fun MainApp(
                             repository = repository,
                             editMode = true,
                             onClose = { activeSubScreen = ActiveSubScreen.NONE }
+                        )
+                    }
+                    ActiveSubScreen.CHAPERONE -> {
+                        BackHandler { activeSubScreen = ActiveSubScreen.SETTINGS }
+                        ChaperoneScreen(
+                            repository = repository,
+                            onBack = { activeSubScreen = ActiveSubScreen.SETTINGS }
                         )
                     }
                     ActiveSubScreen.NONE -> {}

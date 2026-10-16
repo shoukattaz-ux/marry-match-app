@@ -42,7 +42,9 @@ enum class AuthState {
     LOCATION_GATE,
     LOCATION_REJECTED,
     ONBOARDING,
-    LOGGED_IN
+    LOGGED_IN,
+    /** Signed in only as a chaperone (no own profile): sees the chaperone screen only. */
+    CHAPERONE
 }
 
 /** Sign-up needs a fresh pass from the location check; the user must verify their location again. */
@@ -85,6 +87,9 @@ class MarryMatchRepository {
 
     // Signed links for the private profile photos, shared by all services.
     private var _photoLinks: PhotoUrlSigner? = null
+
+    private var _chaperone: ChaperoneApi? = null
+    val chaperone: ChaperoneApi? get() = _chaperone
 
     private var _verification: VerificationApi? = null
     val verification: VerificationApi? get() = _verification
@@ -179,6 +184,7 @@ class MarryMatchRepository {
                 _chat = SupabaseChatService(_supabase!!) { _currentUser.value.id }
                 _admin = SupabaseAdminService(_supabase!!)
                 _account = SupabaseAccountService(_supabase!!) { _currentUser.value.id }
+                _chaperone = SupabaseChaperoneService(_supabase!!)
                 _verification = SupabaseVerificationService(_supabase!!, _profileService!!, photoLinks) { _currentUser.value.id }
                 repositoryScope.launch {
                     checkInitialSession()
@@ -372,7 +378,9 @@ class MarryMatchRepository {
             _authState.value = AuthState.LOGGED_IN
             return
         }
-        if (profile == null || !profile.row.onboardingDone) {
+        if (profile == null && isChaperoneOnly()) {
+            _authState.value = AuthState.CHAPERONE
+        } else if (profile == null || !profile.row.onboardingDone) {
             _authState.value = AuthState.ONBOARDING
         } else {
             applyProfile(profile)
@@ -382,6 +390,20 @@ class MarryMatchRepository {
             onAppActive()
             repositoryScope.launch { loadPrivacy() }  // the chat needs hideActivity
         }
+    }
+
+    /** An account without a profile that reads along for at least one member. */
+    private suspend fun isChaperoneOnly(): Boolean =
+        runCatching { _chaperone?.myWards()?.isNotEmpty() == true }.getOrDefault(false)
+
+    /** A code was accepted during onboarding: this account is a chaperone, not a member. */
+    fun onBecameChaperone() {
+        if (_authState.value == AuthState.ONBOARDING) _authState.value = AuthState.CHAPERONE
+    }
+
+    /** The chaperone-only account no longer reads along for anyone: offer the normal sign-up path. */
+    fun onNoLongerChaperone() {
+        if (_authState.value == AuthState.CHAPERONE) _authState.value = AuthState.ONBOARDING
     }
 
     /** The app was opened or came back to the screen: counts as "active today". */
@@ -449,7 +471,8 @@ class MarryMatchRepository {
                     lastMessage = m.lastMessage.orEmpty(),
                     lastMessageTime = m.lastMessageAt?.let { ChatTime.format(it) }.orEmpty(),
                     unread = m.unreadCount > 0,
-                    expiresInDays = m.expiresAt?.let { MatchExpiry.daysLeft(it) }
+                    expiresInDays = m.expiresAt?.let { MatchExpiry.daysLeft(it) },
+                    chaperoned = m.chaperoned
                 )
             }
             _receivedLikesCount.value = api.receivedLikesCount()

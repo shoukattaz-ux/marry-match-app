@@ -46,7 +46,9 @@ data class UserProfile(
     /** "today", "week" or "" (unknown or hidden); never an exact time. */
     val activity: String = "",
     /** [photos] are blurred copies: this member shows clear photos only to matches. */
-    val photosBlurred: Boolean = false
+    val photosBlurred: Boolean = false,
+    /** A chaperone (family member) reads this member's chats with matches. */
+    val chaperoned: Boolean = false
 )
 
 /** A question users can answer on their profile; [key] is what the database stores. */

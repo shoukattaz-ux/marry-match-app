@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.FamilyRestroom
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
@@ -372,6 +373,27 @@ fun ProfileHingeCard(
             Spacer(Modifier.height(14.dp))
             if (profile.marriageTimeline.isNotBlank()) {
                 MarriageTimelineChip(timeline = profile.marriageTimeline, isGerman = isGerman)
+                Spacer(Modifier.height(14.dp))
+            }
+            if (profile.chaperoned) {
+                // Told before liking: a family member would read the chat after a match.
+                Row(
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(50))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .testTag("chaperone_chip"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Default.FamilyRestroom, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(16.dp))
+                    Text(Localization.t("chaperone_badge", lang), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                }
+                Text(
+                    Localization.t("chaperone_reads_along", lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.extendedColors.muted,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
                 Spacer(Modifier.height(14.dp))
             }
 

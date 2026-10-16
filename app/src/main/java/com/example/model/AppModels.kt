@@ -8,7 +8,9 @@ data class MatchItem(
     val lastMessageTime: String,
     val unread: Boolean = false,
     /** Days left before a match nobody has written to disappears (null once someone wrote). */
-    val expiresInDays: Int? = null
+    val expiresInDays: Int? = null,
+    /** One of the two has a chaperone (family member) who can read this chat. */
+    val chaperoned: Boolean = false
 )
 
 data class ChatMessage(

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FamilyRestroom
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
@@ -46,6 +47,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onOpenSafety: () -> Unit,
     onOpenPrivacySettings: () -> Unit = {},
+    onOpenChaperone: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val lang by repository.appLanguage.collectAsState()
@@ -167,6 +169,8 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     SettingNavRow(icon = Icons.Default.Visibility, title = Localization.t("privacy_settings_title", lang), onClick = onOpenPrivacySettings)
+                    HorizontalDivider()
+                    SettingNavRow(icon = Icons.Default.FamilyRestroom, title = Localization.t("chaperone_title", lang), onClick = onOpenChaperone)
                     HorizontalDivider()
                     SettingNavRow(icon = Icons.Default.Lock, title = Localization.t("privacy_link", lang), onClick = { legalPage = LegalPage.PRIVACY })
                     HorizontalDivider()

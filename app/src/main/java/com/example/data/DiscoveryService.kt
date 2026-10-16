@@ -48,7 +48,9 @@ data class MatchSummary(
     val lastMessageAt: String? = null,
     val unreadCount: Int = 0,
     /** Set while nobody has written yet: the match disappears at this time (7 days after matching). */
-    val expiresAt: String? = null
+    val expiresAt: String? = null,
+    /** One of the two has a chaperone who can read the chat. */
+    val chaperoned: Boolean = false
 )
 
 /** Discovery on the server. An interface so the Discover logic can be tested with a fake. */
@@ -86,6 +88,7 @@ private data class CardDto(
     @SerialName("phone_verified") val phoneVerified: Boolean = false,
     val active: String? = null,
     @SerialName("photos_blurred") val photosBlurred: Boolean = false,
+    val chaperoned: Boolean = false,
     val photos: List<CardPhotoDto> = emptyList(),
     val prompts: List<CardPromptDto> = emptyList()
 )
@@ -112,6 +115,7 @@ private data class MatchDto(
     @SerialName("phone_verified") val phoneVerified: Boolean = false,
     val active: String? = null,
     @SerialName("expires_at") val expiresAt: String? = null,
+    val chaperoned: Boolean = false,
     @SerialName("last_message") val lastMessage: String? = null,
     @SerialName("last_message_at") val lastMessageAt: String? = null,
     val unread: Int = 0
@@ -184,7 +188,8 @@ class SupabaseDiscoveryService(
                 lastMessage = m.lastMessage,
                 lastMessageAt = m.lastMessageAt,
                 unreadCount = m.unread,
-                expiresAt = m.expiresAt
+                expiresAt = m.expiresAt,
+                chaperoned = m.chaperoned
             )
         }
     }
@@ -252,7 +257,8 @@ class SupabaseDiscoveryService(
             selfieVerified = selfieVerified,
             phoneVerified = phoneVerified,
             activity = active.orEmpty(),
-            photosBlurred = photosBlurred
+            photosBlurred = photosBlurred,
+            chaperoned = chaperoned
         )
     }
 

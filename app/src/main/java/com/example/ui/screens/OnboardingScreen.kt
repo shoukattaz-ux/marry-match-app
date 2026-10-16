@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.ui.viewmodel.ChaperoneViewModel
 import coil.compose.AsyncImage
 import com.example.core.AppLanguage
 import com.example.core.Localization
@@ -84,6 +85,25 @@ fun OnboardingScreen(
         if (state.step > 1) vm.back() else closeEditor()
     }
 
+    var showChaperoneCode by remember { mutableStateOf(false) }
+    if (showChaperoneCode) {
+        val chaperoneVm: ChaperoneViewModel = viewModel(key = "chaperone_join") {
+            ChaperoneViewModel(repository.chaperone, hasProfile = false)
+        }
+        val chaperoneState by chaperoneVm.state.collectAsState()
+        AcceptChaperoneCodeDialog(
+            lang = lang,
+            busy = chaperoneState.busy,
+            errorText = chaperoneState.errorKey?.let(t),
+            onDismiss = { showChaperoneCode = false; chaperoneVm.clearError() }
+        ) { code, name ->
+            chaperoneVm.accept(code, name) {
+                showChaperoneCode = false
+                repository.onBecameChaperone()
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -112,6 +132,12 @@ fun OnboardingScreen(
                     }
                 },
                 actions = {
+                    if (!editMode && state.step == 1) {
+                        // Family members who only come to read along as a chaperone skip the profile.
+                        TextButton(onClick = { showChaperoneCode = true }, modifier = Modifier.testTag("onboarding_chaperone_code_btn")) {
+                            Text(t("chaperone_have_code"))
+                        }
+                    }
                     TextButton(onClick = { repository.toggleLanguage() }) {
                         Text(if (lang == AppLanguage.EN) "DE" else "EN", fontWeight = FontWeight.Bold)
                     }
