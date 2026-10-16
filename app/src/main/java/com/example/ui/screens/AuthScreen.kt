@@ -535,6 +535,7 @@ private const val RESEND_COOLDOWN_SECONDS = 60
 internal fun friendlyAuthError(error: Throwable?, lang: AppLanguage, fallbackKey: String): String {
     val lower = (error?.message ?: "").lowercase() + " " + (error?.javaClass?.simpleName ?: "").lowercase()
     return when {
+        lower.contains("banned") -> Localization.t("account_banned", lang)
         lower.contains("rate limit") || lower.contains("too many") || lower.contains("over_email_send_rate_limit") ->
             Localization.t("rate_limited", lang)
         lower.contains("unknownhost") || lower.contains("failed to connect") || lower.contains("connectexception") ||

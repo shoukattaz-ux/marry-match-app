@@ -6,7 +6,6 @@ import com.example.core.AppLanguage
 import com.example.model.MatchItem
 import com.example.model.ProfilePrompt
 import com.example.model.PromptCatalog
-import com.example.model.ReportItem
 import com.example.model.UserProfile
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
@@ -53,8 +52,12 @@ private data class UserStatusRow(
     @SerialName("country_ok") val countryOk: Boolean = false,
     @SerialName("selfie_verified") val selfieVerified: Boolean = false,
     @SerialName("phone_verified") val phoneVerified: Boolean = false,
-    @SerialName("is_admin") val isAdmin: Boolean = false
+    @SerialName("is_admin") val isAdmin: Boolean = false,
+    @SerialName("is_banned") val isBanned: Boolean = false
 )
+
+/** The account was banned by a moderator; the user is signed out. */
+class AccountBannedException : IllegalStateException("Account banned")
 
 @Serializable
 private data class BlockRow(val blocked: String)
@@ -122,8 +125,9 @@ class MarryMatchRepository {
     private val _blockedUserIds = MutableStateFlow<Set<String>>(emptySet())
     val blockedUserIds: StateFlow<Set<String>> = _blockedUserIds.asStateFlow()
 
-    private val _reports = MutableStateFlow(SampleDataProvider.getInitialReports())
-    val reports: StateFlow<List<ReportItem>> = _reports.asStateFlow()
+    private var _admin: AdminApi? = null
+    /** Moderator tools; the server refuses every call from accounts without is_admin. */
+    val admin: AdminApi? get() = _admin
 
     private val _matchCelebration = MutableStateFlow<UserProfile?>(null)
     val matchCelebration: StateFlow<UserProfile?> = _matchCelebration.asStateFlow()
@@ -183,6 +187,7 @@ class MarryMatchRepository {
                 _profileService = ProfileService(_supabase!!)
                 _discovery = SupabaseDiscoveryService(_supabase!!) { _currentUser.value.id }
                 _chat = SupabaseChatService(_supabase!!) { _currentUser.value.id }
+                _admin = SupabaseAdminService(_supabase!!)
                 _verification = SupabaseVerificationService(_supabase!!, _profileService!!) { _currentUser.value.id }
                 repositoryScope.launch {
                     checkInitialSession()
@@ -288,19 +293,25 @@ class MarryMatchRepository {
      * record yet (accounts created before the sign-up pass existed). Travellers who passed at
      * sign-up are never asked again.
      */
-    private suspend fun routeAfterLogin(client: SupabaseClient, userId: String) {
+    private suspend fun routeAfterLogin(client: SupabaseClient, userId: String): Boolean {
+        var banned = false
         val countryOk = try {
             val status = client.from("user_status")
-                .select(columns = Columns.list("country_ok", "selfie_verified", "phone_verified", "is_admin")) {
+                .select(columns = Columns.list("country_ok", "selfie_verified", "phone_verified", "is_admin", "is_banned")) {
                     filter { eq("user_id", userId) }
                 }
                 .decodeSingleOrNull<UserStatusRow>()
             if (status != null) applyStatus(status)
+            banned = status?.isBanned == true
             status?.countryOk ?: false
         } catch (e: Throwable) {
             // The server enforces country_ok on every write anyway, so a failed read must not lock the user out.
             Log.w("MarryMatchRepository", "Could not read user_status: ${e.message}")
             true
+        }
+        if (banned) {
+            signOut()
+            return false
         }
         loadBlockedIds(client, userId)
         refreshSelfieStatus()
@@ -311,6 +322,7 @@ class MarryMatchRepository {
             _isPostLoginLocationGate.value = true
             _authState.value = AuthState.LOCATION_GATE
         }
+        return true
     }
 
     /** Badges and the admin flag come only from the server (user_status), never from the app. */
@@ -330,7 +342,7 @@ class MarryMatchRepository {
         try {
             _selfieStatus.value = api.myStatus()
             client.from("user_status")
-                .select(columns = Columns.list("country_ok", "selfie_verified", "phone_verified", "is_admin")) {
+                .select(columns = Columns.list("country_ok", "selfie_verified", "phone_verified", "is_admin", "is_banned")) {
                     filter { eq("user_id", userId) }
                 }
                 .decodeSingleOrNull<UserStatusRow>()
@@ -476,8 +488,7 @@ class MarryMatchRepository {
             val user = client.auth.currentUserOrNull()
             if (user != null) {
                 applyAuthUser(user.id, user.email ?: email.trim(), user.userMetadata)
-                routeAfterLogin(client, user.id)
-                Result.success(Unit)
+                if (routeAfterLogin(client, user.id)) Result.success(Unit) else Result.failure(AccountBannedException())
             } else {
                 Result.failure(IllegalStateException("No valid user session returned by Supabase."))
             }
@@ -661,16 +672,6 @@ class MarryMatchRepository {
                 return Result.failure(e)
             }
         }
-        val report = ReportItem(
-            id = "rep_${UUID.randomUUID()}",
-            reporterId = _currentUser.value.id,
-            reportedUserId = reportedUserId,
-            reportedUserName = reportedUserName,
-            reason = reason,
-            details = details,
-            status = "open"
-        )
-        _reports.value = listOf(report) + _reports.value
         return Result.success(Unit)
     }
 

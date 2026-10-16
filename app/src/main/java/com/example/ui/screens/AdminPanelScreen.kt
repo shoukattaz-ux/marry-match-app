@@ -1,13 +1,16 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -15,35 +18,49 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import com.example.core.AppConfig
-import com.example.data.MarryMatchRepository
-import com.example.model.ReportItem
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.core.AppLanguage
 import com.example.core.Localization
+import com.example.data.AdminReport
+import com.example.data.AdminStats
+import com.example.data.AdminUser
+import com.example.data.AuditEntry
+import com.example.data.MarryMatchRepository
 import com.example.data.SelfieReviewItem
 import com.example.data.SupabaseVerificationService
+import com.example.ui.theme.extendedColors
+import com.example.ui.viewmodel.AdminUiState
+import com.example.ui.viewmodel.AdminViewModel
 import com.example.ui.viewmodel.SelfieQueueUiState
 import com.example.ui.viewmodel.SelfieQueueViewModel
-import com.example.ui.theme.extendedColors
 
+private enum class AdminTab(val labelKey: String) {
+    OVERVIEW("admin_tab_overview"), SELFIES("admin_tab_selfies"), REPORTS("admin_tab_reports"),
+    USERS("admin_tab_users"), LOG("admin_tab_log")
+}
+
+/** Short date and time from an ISO timestamp, e.g. "2026-10-15 09:00". */
+private fun shortTime(iso: String): String = iso.take(16).replace('T', ' ')
+
+/**
+ * Moderator panel (blueprint Phase 9). Opened from the profile only for accounts with
+ * user_status.is_admin; the server checks that flag again on every call.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminPanelScreen(
@@ -51,59 +68,63 @@ fun AdminPanelScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedSection by remember { mutableIntStateOf(0) } // 0: Dashboard, 1: Selfie Queue, 2: Reports, 3: Settings
+    var tab by rememberSaveable { mutableStateOf(AdminTab.OVERVIEW) }
     val lang by repository.appLanguage.collectAsState()
     val queueVm: SelfieQueueViewModel = viewModel(key = "selfie_queue") { SelfieQueueViewModel(repository.verification) }
     val queueState by queueVm.state.collectAsState()
-    val selfieQueue = queueState.items
-    val reports by repository.reports.collectAsState()
-    val profiles by repository.dailyProfiles.collectAsState()
+    val adminVm: AdminViewModel = viewModel(key = "admin_panel") { AdminViewModel(repository.admin) }
+    val state by adminVm.state.collectAsState()
+
+    // Load each tab when it is opened.
+    LaunchedEffect(tab) {
+        when (tab) {
+            AdminTab.OVERVIEW -> adminVm.loadStats()
+            AdminTab.SELFIES -> queueVm.reload()
+            AdminTab.REPORTS -> adminVm.loadReports()
+            AdminTab.USERS -> if (state.users.isEmpty()) adminVm.searchUsers()
+            AdminTab.LOG -> adminVm.loadAudit()
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Moderator & Admin Panel", style = MaterialTheme.typography.titleLarge) },
+                title = { Text(Localization.t("admin_panel", lang), style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = Localization.t("back", lang))
                     }
                 }
             )
         },
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(
-                    selected = selectedSection == 0,
-                    onClick = { selectedSection = 0 },
-                    icon = { Icon(Icons.Default.Dashboard, contentDescription = null) },
-                    label = { Text("Overview") }
-                )
-                NavigationBarItem(
-                    selected = selectedSection == 1,
-                    onClick = { selectedSection = 1 },
-                    icon = {
-                        BadgedBox(badge = { if (selfieQueue.isNotEmpty()) Badge { Text(selfieQueue.size.toString()) } }) {
-                            Icon(Icons.Default.Face, contentDescription = null)
-                        }
-                    },
-                    label = { Text("Selfies") }
-                )
-                NavigationBarItem(
-                    selected = selectedSection == 2,
-                    onClick = { selectedSection = 2 },
-                    icon = {
-                        BadgedBox(badge = { if (reports.isNotEmpty()) Badge { Text(reports.size.toString()) } }) {
-                            Icon(Icons.Default.Flag, contentDescription = null)
-                        }
-                    },
-                    label = { Text("Reports") }
-                )
-                NavigationBarItem(
-                    selected = selectedSection == 3,
-                    onClick = { selectedSection = 3 },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("Switches") }
-                )
+                AdminTab.entries.forEach { t ->
+                    val count = when (t) {
+                        AdminTab.SELFIES -> state.stats?.pendingSelfies ?: queueState.items.size
+                        AdminTab.REPORTS -> state.stats?.openReports ?: 0
+                        else -> 0
+                    }
+                    NavigationBarItem(
+                        selected = tab == t,
+                        onClick = { tab = t; adminVm.clearMessages() },
+                        icon = {
+                            BadgedBox(badge = { if (count > 0) Badge { Text(count.toString()) } }) {
+                                Icon(
+                                    when (t) {
+                                        AdminTab.OVERVIEW -> Icons.Default.Dashboard
+                                        AdminTab.SELFIES -> Icons.Default.Face
+                                        AdminTab.REPORTS -> Icons.Default.Flag
+                                        AdminTab.USERS -> Icons.Default.People
+                                        AdminTab.LOG -> Icons.Default.History
+                                    },
+                                    contentDescription = null
+                                )
+                            }
+                        },
+                        label = { Text(Localization.t(t.labelKey, lang), maxLines = 1) }
+                    )
+                }
             }
         }
     ) { padding ->
@@ -113,10 +134,13 @@ fun AdminPanelScreen(
                 .padding(padding)
                 .padding(16.dp)
         ) {
-            when (selectedSection) {
-                0 -> AdminDashboardView(
-                    note = { SampleDataNote(lang) },selfieCount = selfieQueue.size, reportCount = reports.size, activeUsers = profiles.size + 1)
-                1 -> SelfieQueueView(
+            if (tab != AdminTab.SELFIES) {
+                state.errorKey?.let { MessageBar(Localization.t(it, lang), error = true, onClose = adminVm::clearMessages) }
+                state.doneKey?.let { MessageBar(Localization.t(it, lang), error = false, onClose = adminVm::clearMessages) }
+            }
+            when (tab) {
+                AdminTab.OVERVIEW -> AdminOverview(state.stats, state.loading, lang, onReload = adminVm::loadStats)
+                AdminTab.SELFIES -> SelfieQueueView(
                     state = queueState,
                     lang = lang,
                     onReload = queueVm::reload,
@@ -124,36 +148,57 @@ fun AdminPanelScreen(
                     onClose = queueVm::close,
                     onDecide = queueVm::decide
                 )
-                2 -> {
-                    SampleDataNote(lang)
-                    ReportsListView(reports = reports)
-                }
-                3 -> {
-                    SampleDataNote(lang)
-                    AdminSwitchesView()
-                }
+                AdminTab.REPORTS -> AdminReports(state, lang, adminVm)
+                AdminTab.USERS -> AdminUsers(state, lang, adminVm)
+                AdminTab.LOG -> AdminLog(state.audit, state.loading, lang, onReload = adminVm::loadAudit)
             }
         }
     }
 }
 
 @Composable
-fun AdminDashboardView(note: @Composable () -> Unit, selfieCount: Int, reportCount: Int, activeUsers: Int) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { note() }
+private fun MessageBar(text: String, error: Boolean, onClose: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = if (error) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp).clickable(onClick = onClose)
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.padding(10.dp)
+        )
+    }
+}
+
+@Composable
+private fun AdminOverview(stats: AdminStats?, loading: Boolean, lang: AppLanguage, onReload: () -> Unit) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("Community Health & Status (Germany)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                AdminStatCard("New Users Today", "+24", Modifier.weight(1f))
-                AdminStatCard("Active Users", activeUsers.toString(), Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(Localization.t("admin_overview_title", lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                TextButton(onClick = onReload, enabled = !loading) { Text(Localization.t("admin_reload", lang)) }
             }
         }
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                AdminStatCard("Pending Selfies", selfieCount.toString(), Modifier.weight(1f), isAlert = selfieCount > 0)
-                AdminStatCard("Open Reports", reportCount.toString(), Modifier.weight(1f), isAlert = reportCount > 0)
+        if (stats == null) {
+            item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { if (loading) CircularProgressIndicator() } }
+        } else {
+            val rows = listOf(
+                listOf("admin_stat_users" to stats.usersTotal, "admin_stat_new_today" to stats.newToday),
+                listOf("admin_stat_active" to stats.active7d, "admin_stat_profiles" to stats.profilesDone),
+                listOf("admin_stat_verified" to stats.verified, "admin_stat_banned" to stats.banned),
+                listOf("admin_stat_selfies" to stats.pendingSelfies, "admin_stat_reports" to stats.openReports),
+                listOf("admin_stat_needs_review" to stats.needsReview)
+            )
+            val alerts = setOf("admin_stat_selfies", "admin_stat_reports", "admin_stat_needs_review")
+            items(rows) { row ->
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    row.forEach { (key, value) ->
+                        AdminStatCard(Localization.t(key, lang), value.toString(), Modifier.weight(1f), isAlert = key in alerts && value > 0)
+                    }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
             }
         }
         item {
@@ -163,10 +208,8 @@ fun AdminDashboardView(note: @Composable () -> Unit, selfieCount: Int, reportCou
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Trust Guidelines Rulebook", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    Text("• Rule 1: Underage suspicion, threats, or scams = ban immediately.", style = MaterialTheme.typography.bodySmall)
-                    Text("• Rule 2: Fake photos = reject and revoke blue badge.", style = MaterialTheme.typography.bodySmall)
-                    Text("• Rule 3: Target SLA = review every report within 24 hours.", style = MaterialTheme.typography.bodySmall)
+                    Text(Localization.t("admin_rules_title", lang), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Text(Localization.t("admin_rules_body", lang), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -188,23 +231,6 @@ fun AdminStatCard(title: String, value: String, modifier: Modifier = Modifier, i
             Spacer(modifier = Modifier.height(2.dp))
             Text(title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
         }
-    }
-}
-
-/** Tabs that still show sample data until the rest of Phase 9 is built. */
-@Composable
-private fun SampleDataNote(lang: AppLanguage) {
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
-    ) {
-        Text(
-            Localization.t("admin_sample_note", lang),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onTertiaryContainer,
-            modifier = Modifier.padding(10.dp)
-        )
     }
 }
 
@@ -354,53 +380,106 @@ private fun SelfieReviewDetail(
     }
 }
 
+
 @Composable
-fun ReportsListView(reports: List<ReportItem>) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
-            Text("Open User & Message Reports (${reports.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+private fun AdminReports(state: AdminUiState, lang: AppLanguage, vm: AdminViewModel) {
+    // Ban asks for confirmation first: it locks the account and closes all its reports.
+    var confirmBan by remember { mutableStateOf<AdminReport?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            listOf("open", "actioned", "dismissed").forEach { s ->
+                FilterChip(
+                    selected = state.reportStatus == s,
+                    onClick = { vm.loadReports(s) },
+                    label = { Text(Localization.t("admin_reports_$s", lang)) }
+                )
+            }
         }
-        items(reports) { rep ->
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Reported: ${rep.reportedUserName}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.errorContainer
-                        ) {
-                            Text(
-                                text = rep.reason.uppercase(),
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
+        when {
+            state.loading && state.reports.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            state.reports.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(Localization.t("admin_reports_empty", lang), color = MaterialTheme.extendedColors.muted)
+            }
+            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(state.reports, key = { it.reportId }) { rep ->
+                    ReportCard(rep, lang, working = state.workingOn == rep.reportId, actionsEnabled = state.workingOn == null,
+                        onDismiss = { vm.dismissReport(rep) }, onWarn = { vm.warnReported(rep) }, onBan = { confirmBan = rep })
+                }
+            }
+        }
+    }
+    confirmBan?.let { rep ->
+        ConfirmBanDialog(name = rep.reportedName, lang = lang, onDismiss = { confirmBan = null }) { note ->
+            confirmBan = null
+            vm.banReported(rep, note)
+        }
+    }
+}
 
-                    Text(rep.details, style = MaterialTheme.typography.bodyMedium)
-                    Text("Received ${rep.createdAt}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
-
+@Composable
+private fun ReportCard(
+    rep: AdminReport,
+    lang: AppLanguage,
+    working: Boolean,
+    actionsEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onWarn: () -> Unit,
+    onBan: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    listOf(rep.reportedName.ifBlank { "?" }, rep.reportedAge.takeIf { it > 0 }?.toString(), rep.reportedCity.ifBlank { null })
+                        .filterNotNull().joinToString(", "),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.errorContainer) {
+                    Text(
+                        Localization.t("reason_${rep.reason}", lang),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            if (rep.reportedBanned) {
+                Text(Localization.t("admin_user_banned", lang), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+            }
+            if (rep.reportedOpenReports > 1) {
+                Text(String.format(Localization.t("admin_open_reports_count", lang), rep.reportedOpenReports), style = MaterialTheme.typography.labelMedium)
+            }
+            rep.messageBody?.let {
+                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                    Text("“$it”", style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic, modifier = Modifier.padding(8.dp))
+                }
+            }
+            if (!rep.details.isNullOrBlank()) Text(rep.details, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                String.format(Localization.t("admin_reported_by", lang), rep.reporterName.ifBlank { "?" }, shortTime(rep.createdAt)),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.extendedColors.muted
+            )
+            if (rep.status == "open") {
+                if (working) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = { /* Dismiss */ }) { Text("Dismiss", fontSize = 12.sp) }
-                        Button(
-                            onClick = { /* Ban */ },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            Text("Ban Account", fontSize = 12.sp)
+                        OutlinedButton(onClick = onDismiss, enabled = actionsEnabled) { Text(Localization.t("admin_dismiss", lang)) }
+                        FilledTonalButton(onClick = onWarn, enabled = actionsEnabled) { Text(Localization.t("admin_warn", lang)) }
+                        if (!rep.reportedBanned) {
+                            Button(
+                                onClick = onBan,
+                                enabled = actionsEnabled,
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) { Text(Localization.t("admin_ban", lang)) }
                         }
                     }
                 }
@@ -410,50 +489,144 @@ fun ReportsListView(reports: List<ReportItem>) {
 }
 
 @Composable
-fun AdminSwitchesView() {
-    var phoneSwitch by remember { mutableStateOf<Boolean>(AppConfig.phoneVerificationEnabled) }
-    var waitlistEnabled by remember { mutableStateOf<Boolean>(false) }
+private fun ConfirmBanDialog(name: String, lang: AppLanguage, onDismiss: () -> Unit, onConfirm: (String?) -> Unit) {
+    var note by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(String.format(Localization.t("admin_ban_title", lang), name.ifBlank { "?" })) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(Localization.t("admin_ban_body", lang), style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it.take(500) },
+                    label = { Text(Localization.t("admin_note", lang)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(note.ifBlank { null }) },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) { Text(Localization.t("admin_ban", lang)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(Localization.t("cancel", lang)) } }
+    )
+}
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Feature Toggles & City Rules", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
-        Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+@Composable
+private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewModel) {
+    var confirmBan by remember { mutableStateOf<AdminUser?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedTextField(
+            value = state.userQuery,
+            onValueChange = vm::setUserQuery,
+            label = { Text(Localization.t("admin_search_hint", lang)) },
+            singleLine = true,
+            trailingIcon = {
+                IconButton(onClick = vm::searchUsers) { Icon(Icons.Default.Search, contentDescription = Localization.t("admin_search", lang)) }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { vm.searchUsers() }),
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Phone Verification (SMS Gateway)", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                        Text("Show or hide the phone check until SMS sender is connected.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
-                    }
-                    Switch(
-                        checked = phoneSwitch,
-                        onCheckedChange = {
-                            phoneSwitch = it
-                            AppConfig.phoneVerificationEnabled = it
-                        }
-                    )
+        )
+        when {
+            state.loading && state.users.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            state.users.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(Localization.t("admin_users_empty", lang), color = MaterialTheme.extendedColors.muted)
+            }
+            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(state.users, key = { it.userId }) { user ->
+                    UserCard(user, lang, working = state.workingOn == user.userId, actionsEnabled = state.workingOn == null,
+                        onBan = { confirmBan = user }, onUnban = { vm.setBanned(user, false, null) })
                 }
+            }
+        }
+    }
+    confirmBan?.let { user ->
+        ConfirmBanDialog(name = user.displayName, lang = lang, onDismiss = { confirmBan = null }) { note ->
+            confirmBan = null
+            vm.setBanned(user, true, note)
+        }
+    }
+}
 
-                HorizontalDivider()
+@Composable
+private fun UserCard(user: AdminUser, lang: AppLanguage, working: Boolean, actionsEnabled: Boolean, onBan: () -> Unit, onUnban: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                listOf(user.displayName.ifBlank { Localization.t("admin_no_profile", lang) }, user.age.takeIf { it > 0 }?.toString(), user.city.ifBlank { null })
+                    .filterNotNull().joinToString(", "),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(user.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+            Text(
+                String.format(Localization.t("admin_user_line", lang), shortTime(user.createdAt), user.respectScore, user.openReports),
+                style = MaterialTheme.typography.bodySmall
+            )
+            val badges = buildList {
+                if (user.isAdmin) add("admin_badge_admin")
+                if (user.selfieVerified) add("admin_badge_verified")
+                if (user.needsReview) add("admin_badge_review")
+                if (user.isBanned) add("admin_user_banned")
+            }
+            if (badges.isNotEmpty()) {
+                Text(badges.joinToString(" • ") { Localization.t(it, lang) }, style = MaterialTheme.typography.labelMedium,
+                    color = if (user.isBanned) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+            }
+            if (!user.isAdmin) {
+                if (working) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else if (user.isBanned) {
+                    OutlinedButton(onClick = onUnban, enabled = actionsEnabled) { Text(Localization.t("admin_unban", lang)) }
+                } else {
+                    Button(
+                        onClick = onBan,
+                        enabled = actionsEnabled,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) { Text(Localization.t("admin_ban", lang)) }
+                }
+            }
+        }
+    }
+}
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("City Waitlist Rule", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                        Text("Only open cities once 500+ verified singles sign up.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+@Composable
+private fun AdminLog(entries: List<AuditEntry>, loading: Boolean, lang: AppLanguage, onReload: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(Localization.t("admin_log_title", lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            TextButton(onClick = onReload, enabled = !loading) { Text(Localization.t("admin_reload", lang)) }
+        }
+        when {
+            loading && entries.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            entries.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(Localization.t("admin_log_empty", lang), color = MaterialTheme.extendedColors.muted)
+            }
+            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(entries, key = { it.id }) { e ->
+                    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Text(
+                            Localization.t("audit_${e.action}", lang) + " — " + e.targetName.ifBlank { e.targetUser?.take(8) ?: "" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            listOfNotNull(shortTime(e.createdAt), e.actorName.ifBlank { null }, e.note?.let { Localization.t("selfie_reason_$it", lang).takeIf { t -> t != "selfie_reason_$it" } ?: it })
+                                .joinToString(" • "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.extendedColors.muted
+                        )
+                        HorizontalDivider(Modifier.padding(top = 6.dp))
                     }
-                    Switch(checked = waitlistEnabled, onCheckedChange = { waitlistEnabled = it })
                 }
             }
         }
