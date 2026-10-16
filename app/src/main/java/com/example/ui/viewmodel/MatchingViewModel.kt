@@ -24,6 +24,8 @@ data class DiscoverUiState(
     val remaining: List<UserProfile> = emptyList(),
     val prefs: DiscoveryPrefs = DiscoveryPrefs(),
     val sending: Boolean = false,
+    /** The person just passed, while "Undo" is offered; null otherwise. */
+    val lastPassed: UserProfile? = null,
     /** Localization key of an error to show, or null. */
     val errorKey: String? = null
 ) {
@@ -39,8 +41,11 @@ data class DiscoverUiState(
  */
 class MatchingViewModel(
     private val repository: MarryMatchRepository,
-    private val api: DiscoveryApi? = repository.discovery
+    private val api: DiscoveryApi? = repository.discovery,
+    private val nowMs: () -> Long = System::currentTimeMillis
 ) : ViewModel() {
+
+    private var lastPassedAtMs = 0L
 
     private val _uiState = MutableStateFlow(DiscoverUiState())
     val uiState: StateFlow<DiscoverUiState> = _uiState.asStateFlow()
@@ -105,11 +110,39 @@ class MatchingViewModel(
             try {
                 discovery.pass(person.id)
                 removeFromSet(person)
+                lastPassedAtMs = nowMs()
+                _uiState.update { it.copy(lastPassed = person) }
             } catch (e: Throwable) {
                 _uiState.update { it.copy(sending = false, errorKey = "discover_action_failed") }
             }
         }
     }
+
+    /** Brings the person just passed back to the front of today's set. */
+    fun undoPass() {
+        val person = _uiState.value.lastPassed ?: return
+        val discovery = api ?: return
+        if (_uiState.value.sending) return
+        if (nowMs() - lastPassedAtMs > UNDO_WINDOW_MS) {
+            _uiState.update { it.copy(lastPassed = null, errorKey = "undo_too_late") }
+            return
+        }
+        _uiState.update { it.copy(sending = true, errorKey = null) }
+        viewModelScope.launch {
+            try {
+                discovery.undoPass(person.id)
+                _uiState.update { s ->
+                    s.copy(sending = false, lastPassed = null, remaining = listOf(person) + s.remaining.filterNot { it.id == person.id })
+                }
+            } catch (e: Throwable) {
+                val key = if (e.message?.contains("undo_too_late") == true) "undo_too_late" else "undo_failed"
+                _uiState.update { it.copy(sending = false, lastPassed = null, errorKey = key) }
+            }
+        }
+    }
+
+    /** "Undo" is no longer offered (its time is up, or the user moved on). */
+    fun dismissUndo() = _uiState.update { it.copy(lastPassed = null) }
 
     /** Saves the filters; they apply to today's remaining people now and to tomorrow's set. */
     fun applyPrefs(prefs: DiscoveryPrefs) {
@@ -123,6 +156,11 @@ class MatchingViewModel(
                 _uiState.update { it.copy(prefs = before, errorKey = "filters_save_failed") }
             }
         }
+    }
+
+    companion object {
+        /** Same limit as the server's undo_pass. */
+        const val UNDO_WINDOW_MS = 10 * 60 * 1000L
     }
 
     private fun removeFromSet(person: UserProfile) {

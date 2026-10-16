@@ -41,6 +41,7 @@ import com.example.ui.theme.extendedColors
 import com.example.ui.viewmodel.LikeTarget
 import com.example.ui.viewmodel.MatchingViewModel
 import com.example.ui.viewmodel.OnboardingViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -122,6 +123,41 @@ fun DiscoverScreen(
 
             state.errorKey?.let { key ->
                 Snackbar(modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)) { Text(t(key)) }
+            }
+
+            state.lastPassed?.let { passed ->
+                // Offered for as long as the server allows it; at the top so it never covers the buttons.
+                LaunchedEffect(passed.id) {
+                    delay(MatchingViewModel.UNDO_WINDOW_MS)
+                    matchingViewModel.dismissUndo()
+                }
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.inverseSurface,
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp).testTag("undo_pass_bar")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 16.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            String.format(t("undo_pass_text"), passed.displayName),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.inverseOnSurface
+                        )
+                        TextButton(
+                            onClick = matchingViewModel::undoPass,
+                            enabled = !state.sending,
+                            modifier = Modifier.testTag("undo_pass_btn")
+                        ) {
+                            Text(t("undo"), color = MaterialTheme.colorScheme.inversePrimary, fontWeight = FontWeight.Bold)
+                        }
+                        IconButton(onClick = matchingViewModel::dismissUndo, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = t("close"), tint = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
             }
         }
     }

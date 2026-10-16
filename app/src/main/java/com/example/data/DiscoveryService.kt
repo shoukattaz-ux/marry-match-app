@@ -58,6 +58,10 @@ interface DiscoveryApi {
     suspend fun getDailySet(): DailySet
     suspend fun like(toUserId: String, targetType: String?, targetId: String?, comment: String?): LikeResult
     suspend fun pass(toUserId: String)
+    /** Takes back the most recent pass (server: only that one, within 10 minutes). */
+    suspend fun undoPass(toUserId: String) {
+        throw UnsupportedOperationException("undo_pass")
+    }
     suspend fun getMatches(): List<MatchSummary>
     suspend fun receivedLikesCount(): Int
     suspend fun loadPrefs(): DiscoveryPrefs
@@ -162,6 +166,10 @@ class SupabaseDiscoveryService(
         } catch (e: Throwable) {
             if (e.message?.contains("duplicate key") != true) throw e
         }
+    }
+
+    override suspend fun undoPass(toUserId: String) {
+        client.postgrest.rpc("undo_pass", buildJsonObject { put("p_to", toUserId) })
     }
 
     override suspend fun getMatches(): List<MatchSummary> {

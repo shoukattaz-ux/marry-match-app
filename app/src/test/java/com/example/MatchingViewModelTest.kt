@@ -45,6 +45,13 @@ private class FakeDiscoveryApi(
         if (failNextAction) { failNextAction = false; throw IllegalStateException("offline") }
         passes += toUserId
     }
+    val undone = mutableListOf<String>()
+    var undoError: String? = null
+    override suspend fun undoPass(toUserId: String) {
+        undoError?.let { throw IllegalStateException(it) }
+        undone += toUserId
+        passes -= toUserId
+    }
     override suspend fun getMatches(): List<MatchSummary> = emptyList()
     override suspend fun receivedLikesCount() = 0
     override suspend fun loadPrefs() = DiscoveryPrefs()
@@ -74,7 +81,9 @@ class MatchingViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun viewModel(api: FakeDiscoveryApi) = MatchingViewModel(repository, api)
+    private var clockMs = 1_000_000L
+
+    private fun viewModel(api: FakeDiscoveryApi) = MatchingViewModel(repository, api) { clockMs }
 
     @Test
     fun loadsTodaysSetInServerOrder() {
@@ -165,5 +174,60 @@ class MatchingViewModelTest {
     fun emptySetMeansDoneForToday() {
         val vm = viewModel(FakeDiscoveryApi(DailySet(0, emptyList())))
         assertTrue(vm.uiState.value.doneForToday)
+    }
+    @Test
+    fun undoBringsThePassedPersonBackToTheFront() {
+        val api = FakeDiscoveryApi(DailySet(3, listOf(anna, sophie, lena)))
+        val vm = viewModel(api)
+        vm.pass()
+        assertEquals("a", vm.uiState.value.lastPassed?.id)
+        assertEquals("s", vm.uiState.value.current?.id)
+
+        vm.undoPass()
+        assertEquals(listOf("a"), api.undone)
+        assertEquals(listOf("a", "s", "l"), vm.uiState.value.visible.map { it.id })
+        assertNull(vm.uiState.value.lastPassed)
+    }
+
+    @Test
+    fun onlyTheLatestPassCanBeUndone() {
+        val api = FakeDiscoveryApi(DailySet(3, listOf(anna, sophie, lena)))
+        val vm = viewModel(api)
+        vm.pass()
+        vm.pass()
+        assertEquals("s", vm.uiState.value.lastPassed?.id)
+        vm.undoPass()
+        assertEquals(listOf("s"), api.undone)
+        assertEquals(listOf("s", "l"), vm.uiState.value.visible.map { it.id })
+    }
+
+    @Test
+    fun undoAfterTenMinutesIsRefusedWithoutAskingTheServer() {
+        val api = FakeDiscoveryApi(DailySet(2, listOf(anna, sophie)))
+        val vm = viewModel(api)
+        vm.pass()
+        clockMs += MatchingViewModel.UNDO_WINDOW_MS + 1
+        vm.undoPass()
+        assertTrue(api.undone.isEmpty())
+        assertEquals("undo_too_late", vm.uiState.value.errorKey)
+        assertNull(vm.uiState.value.lastPassed)
+    }
+
+    @Test
+    fun aRefusedUndoShowsAnErrorAndKeepsTheSet() {
+        val api = FakeDiscoveryApi(DailySet(2, listOf(anna, sophie))).apply { undoError = "P0001: undo_too_late" }
+        val vm = viewModel(api)
+        vm.pass()
+        vm.undoPass()
+        assertEquals("undo_too_late", vm.uiState.value.errorKey)
+        assertEquals(listOf("s"), vm.uiState.value.visible.map { it.id })
+        assertFalse(vm.uiState.value.sending)
+    }
+
+    @Test
+    fun undoIsNotOfferedAfterALike() {
+        val vm = viewModel(FakeDiscoveryApi(DailySet(2, listOf(anna, sophie))))
+        vm.like()
+        assertNull(vm.uiState.value.lastPassed)
     }
 }
