@@ -52,7 +52,7 @@ object LegalTexts {
                     "Before a photo is uploaded, the app removes its metadata (for example GPS position and camera details) and counts the faces in it. The face count runs only on your phone (Google ML Kit); the photo is not sent to Google for this.",
                 "6. Who can see your data" to
                     "• Other members see your profile only through the daily suggestions and your matches, with the privacy settings you chose (for example city hidden, religion hidden, incognito).\n" +
-                    "• Profile photos are stored so the app can show them. Anyone who has the exact link to a photo can open it, but the links are not listed anywhere.\n" +
+                    "• Profile photos are private. The app loads them through links that work for one hour, and our server creates such links only for you, your matches, members who get you as a daily suggestion, and moderators.\n" +
                     "• Moderators see reports, the reported messages and selfies waiting for review.\n" +
                     "• Hosting: Supabase (database, file storage, server functions), servers in Frankfurt am Main, EU. Supabase processes the data on our behalf under a data processing agreement (Art. 28 GDPR).\n" +
                     "We do not sell data, show no advertising and use no analytics or tracking tools.",
@@ -81,7 +81,7 @@ object LegalTexts {
                     "Bevor ein Foto hochgeladen wird, entfernt die App seine Metadaten (zum Beispiel GPS-Position und Kameradaten) und zählt die Gesichter darauf. Das Zählen läuft nur auf Ihrem Handy (Google ML Kit); das Foto wird dafür nicht an Google gesendet.",
                 "6. Wer Ihre Daten sehen kann" to
                     "• Andere Mitglieder sehen Ihr Profil nur über die täglichen Vorschläge und Ihre Matches, mit den von Ihnen gewählten Privatsphäre-Einstellungen (zum Beispiel Stadt ausgeblendet, Religion ausgeblendet, Inkognito).\n" +
-                    "• Profilfotos werden gespeichert, damit die App sie anzeigen kann. Wer den genauen Link zu einem Foto hat, kann es öffnen; die Links werden aber nirgends aufgelistet.\n" +
+                    "• Profilfotos sind privat. Die App lädt sie über Links, die eine Stunde gültig sind, und unser Server erstellt solche Links nur für Sie, Ihre Matches, Mitglieder, die Sie als täglichen Vorschlag bekommen, und Moderatoren.\n" +
                     "• Moderatoren sehen Meldungen, die gemeldeten Nachrichten und Selfies, die auf Prüfung warten.\n" +
                     "• Hosting: Supabase (Datenbank, Dateispeicher, Serverfunktionen), Server in Frankfurt am Main, EU. Supabase verarbeitet die Daten in unserem Auftrag auf Grundlage eines Auftragsverarbeitungsvertrags (Art. 28 DSGVO).\n" +
                     "Wir verkaufen keine Daten, zeigen keine Werbung und nutzen keine Analyse- oder Tracking-Werkzeuge.",

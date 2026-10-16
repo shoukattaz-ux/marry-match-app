@@ -82,6 +82,9 @@ class MarryMatchRepository {
     private var _chat: ChatApi? = null
     val chat: ChatApi? get() = _chat
 
+    // Signed links for the private profile photos, shared by all services.
+    private var _photoLinks: PhotoUrlSigner? = null
+
     private var _verification: VerificationApi? = null
     val verification: VerificationApi? get() = _verification
 
@@ -169,12 +172,14 @@ class MarryMatchRepository {
                     install(Storage)
                     install(Realtime)
                 }
-                _profileService = ProfileService(_supabase!!)
-                _discovery = SupabaseDiscoveryService(_supabase!!) { _currentUser.value.id }
+                val photoLinks = PhotoUrlSigner.forBucket(_supabase!!, ProfileService.PHOTO_BUCKET)
+                _photoLinks = photoLinks
+                _profileService = ProfileService(_supabase!!, photoLinks)
+                _discovery = SupabaseDiscoveryService(_supabase!!, photoLinks) { _currentUser.value.id }
                 _chat = SupabaseChatService(_supabase!!) { _currentUser.value.id }
                 _admin = SupabaseAdminService(_supabase!!)
                 _account = SupabaseAccountService(_supabase!!) { _currentUser.value.id }
-                _verification = SupabaseVerificationService(_supabase!!, _profileService!!) { _currentUser.value.id }
+                _verification = SupabaseVerificationService(_supabase!!, _profileService!!, photoLinks) { _currentUser.value.id }
                 repositoryScope.launch {
                     checkInitialSession()
                 }
@@ -499,6 +504,7 @@ class MarryMatchRepository {
 
     fun signOut() {
         repositoryScope.launch {
+            _photoLinks?.clear()
             try {
                 _supabase?.auth?.signOut()
             } catch (e: Throwable) {

@@ -80,6 +80,7 @@ private data class QueueDto(
 class SupabaseVerificationService(
     private val client: SupabaseClient,
     private val profiles: ProfileService,
+    private val photoLinks: PhotoUrlSigner,
     private val currentUserId: () -> String
 ) : VerificationApi {
 
@@ -117,8 +118,9 @@ class SupabaseVerificationService(
     }
 
     override suspend fun reviewQueue(): List<SelfieReviewItem> {
-        val photoBucket = client.storage.from(ProfileService.PHOTO_BUCKET)
-        return client.postgrest.rpc("get_selfie_queue").decodeAs<List<QueueDto>>().map { q ->
+        val rows = client.postgrest.rpc("get_selfie_queue").decodeAs<List<QueueDto>>()
+        photoLinks.urls(rows.flatMap { it.photos })
+        return rows.map { q ->
             SelfieReviewItem(
                 requestId = q.requestId,
                 userId = q.userId,
@@ -128,14 +130,17 @@ class SupabaseVerificationService(
                 pose = q.pose,
                 submittedAt = q.submittedAt,
                 selfiePath = q.selfiePath,
-                profilePhotoUrls = q.photos.map { photoBucket.publicUrl(it) }
+                profilePhotoUrls = q.photos.mapNotNull { photoLinks.url(it) }
             )
         }
     }
 
     /** Short-lived link, so a selfie is only visible while the moderator has it open. */
     override suspend fun selfieUrl(item: SelfieReviewItem): String =
-        client.storage.from(SELFIE_BUCKET).createSignedUrl(item.selfiePath, 10.minutes)
+        // Batch endpoint on purpose: the single-file call also asks for an image transformation.
+        client.storage.from(SELFIE_BUCKET).createSignedUrls(10.minutes, item.selfiePath)
+            .firstOrNull { it.error == null }?.signedURL
+            ?: throw IllegalStateException("Selfie link refused")
 
     override suspend fun review(requestId: String, approve: Boolean, reason: String?) {
         val token = client.auth.currentSessionOrNull()?.accessToken ?: throw IllegalStateException("Not signed in")

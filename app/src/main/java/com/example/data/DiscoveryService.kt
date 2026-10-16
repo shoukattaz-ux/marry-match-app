@@ -7,7 +7,6 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
-import io.github.jan.supabase.storage.storage
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -124,13 +123,13 @@ private data class PrefsDto(
 
 class SupabaseDiscoveryService(
     private val client: SupabaseClient,
+    private val photoLinks: PhotoUrlSigner,
     private val currentUserId: () -> String
 ) : DiscoveryApi {
 
-    private fun photoUrl(path: String) = client.storage.from(ProfileService.PHOTO_BUCKET).publicUrl(path)
-
     override suspend fun getDailySet(): DailySet {
         val dto = client.postgrest.rpc("get_daily_set").decodeAs<DailySetDto>()
+        photoLinks.urls(dto.profiles.flatMap { c -> c.photos.map { it.path } })  // sign all photos in one request
         return DailySet(total = dto.total, profiles = dto.profiles.map { it.toUserProfile() })
     }
 
@@ -155,8 +154,10 @@ class SupabaseDiscoveryService(
         }
     }
 
-    override suspend fun getMatches(): List<MatchSummary> =
-        client.postgrest.rpc("get_my_matches").decodeAs<List<MatchDto>>().map { m ->
+    override suspend fun getMatches(): List<MatchSummary> {
+        val rows = client.postgrest.rpc("get_my_matches").decodeAs<List<MatchDto>>()
+        photoLinks.urls(rows.mapNotNull { it.photo })
+        return rows.map { m ->
             MatchSummary(
                 matchId = m.matchId,
                 matchedAt = m.matchedAt,
@@ -165,7 +166,7 @@ class SupabaseDiscoveryService(
                     displayName = m.displayName,
                     age = m.age,
                     city = m.city.orEmpty(),
-                    photos = listOfNotNull(m.photo?.let(::photoUrl)),
+                    photos = listOfNotNull(m.photo?.let { photoLinks.url(it) }),
                     selfieVerified = m.selfieVerified,
                     phoneVerified = m.phoneVerified,
                     languages = emptyList(),
@@ -176,6 +177,7 @@ class SupabaseDiscoveryService(
                 unreadCount = m.unread
             )
         }
+    }
 
     override suspend fun receivedLikesCount(): Int =
         client.postgrest.rpc("received_likes_count").decodeAs<Int>()
@@ -205,36 +207,40 @@ class SupabaseDiscoveryService(
         client.from("matches").delete { filter { eq("id", matchId) } }
     }
 
-    private fun CardDto.toUserProfile() = UserProfile(
-        id = id,
-        displayName = displayName,
-        age = age,
-        city = city.orEmpty(),
-        region = region.orEmpty(),
-        bio = bio.orEmpty(),
-        marriageTimeline = marriageTimeline.orEmpty(),
-        wantsChildren = wantsChildren.orEmpty(),
-        religion = religion.orEmpty(),
-        smoking = smoking.orEmpty(),
-        education = education.orEmpty(),
-        occupation = occupation.orEmpty(),
-        languages = languages,
-        interests = emptyList(),
-        heightCm = heightCm ?: 0,
-        onboardingDone = true,
-        photos = photos.map { photoUrl(it.path) },
-        photoIds = photos.map { it.id },
-        prompts = prompts.map { p ->
-            val question = PromptCatalog.find(p.key)
-            ProfilePrompt(
-                promptKey = p.key,
-                questionEn = question?.questionEn ?: p.key,
-                questionDe = question?.questionDe ?: p.key,
-                answer = p.answer,
-                id = p.id
-            )
-        },
-        selfieVerified = selfieVerified,
-        phoneVerified = phoneVerified
-    )
+    private suspend fun CardDto.toUserProfile(): UserProfile {
+        // Keep ids and links aligned; a photo the server refuses to sign is left out of both.
+        val signed = photos.mapNotNull { ph -> photoLinks.url(ph.path)?.let { ph.id to it } }
+        return UserProfile(
+            id = id,
+            displayName = displayName,
+            age = age,
+            city = city.orEmpty(),
+            region = region.orEmpty(),
+            bio = bio.orEmpty(),
+            marriageTimeline = marriageTimeline.orEmpty(),
+            wantsChildren = wantsChildren.orEmpty(),
+            religion = religion.orEmpty(),
+            smoking = smoking.orEmpty(),
+            education = education.orEmpty(),
+            occupation = occupation.orEmpty(),
+            languages = languages,
+            interests = emptyList(),
+            heightCm = heightCm ?: 0,
+            onboardingDone = true,
+            photos = signed.map { it.second },
+            photoIds = signed.map { it.first },
+            prompts = prompts.map { p ->
+                val question = PromptCatalog.find(p.key)
+                ProfilePrompt(
+                    promptKey = p.key,
+                    questionEn = question?.questionEn ?: p.key,
+                    questionDe = question?.questionDe ?: p.key,
+                    answer = p.answer,
+                    id = p.id
+                )
+            },
+            selfieVerified = selfieVerified,
+            phoneVerified = phoneVerified
+        )
+    }
 }

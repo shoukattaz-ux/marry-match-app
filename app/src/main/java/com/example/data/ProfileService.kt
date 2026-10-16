@@ -65,7 +65,7 @@ data class MyProfile(
  * profile-photos storage bucket), profile_prompts and consents. Row Level Security on the
  * server makes sure a user can only change their own rows.
  */
-class ProfileService(private val client: SupabaseClient) {
+class ProfileService(private val client: SupabaseClient, private val photoLinks: PhotoUrlSigner) {
 
     private val photoBucket get() = client.storage.from(PHOTO_BUCKET)
 
@@ -85,7 +85,10 @@ class ProfileService(private val client: SupabaseClient) {
                 order("position", Order.ASCENDING)
             }
             .decodeList<PhotoRow>()
-            .map { ProfilePhoto(it.id, it.storagePath, photoBucket.publicUrl(it.storagePath), it.position) }
+            .let { rows ->
+                photoLinks.urls(rows.map { it.storagePath })  // one request for all, then served from the cache
+                rows.map { ProfilePhoto(it.id, it.storagePath, photoLinks.url(it.storagePath).orEmpty(), it.position) }
+            }
 
     private suspend fun loadPrompts(userId: String): List<PromptAnswer> =
         client.from("profile_prompts")
@@ -130,7 +133,7 @@ class ProfileService(private val client: SupabaseClient) {
             runCatching { photoBucket.delete(path) }
             throw e
         }
-        return ProfilePhoto(row.id, row.storagePath, photoBucket.publicUrl(row.storagePath), row.position)
+        return ProfilePhoto(row.id, row.storagePath, photoLinks.url(row.storagePath).orEmpty(), row.position)
     }
 
     suspend fun deletePhoto(photo: ProfilePhoto) {
