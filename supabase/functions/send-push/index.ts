@@ -86,10 +86,12 @@ Deno.serve(async (req: Request) => {
   const { data: ok } = await admin.rpc("push_secret_ok", { p_secret: secret });
   if (ok !== true) return json({ error: "unauthorized" }, 401);
 
+  // Distinct errors so a wrong secret is easy to spot in net._http_response (never the key itself).
   const raw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
-  if (!raw) return json({ error: "push_not_configured" }, 503);
+  if (!raw) return json({ error: "push_secret_missing" }, 503);
   let sa: ServiceAccount;
-  try { sa = JSON.parse(raw); } catch { return json({ error: "push_not_configured" }, 503); }
+  try { sa = JSON.parse(raw); } catch { return json({ error: "push_secret_not_json" }, 503); }
+  if (!sa?.client_email || !sa?.private_key || !sa?.project_id) return json({ error: "push_secret_incomplete" }, 503);
 
   let body: { user_id?: string; kind?: Kind; data?: { match_id?: string; name?: string } };
   try { body = await req.json(); } catch { return json({ error: "bad_request" }, 400); }
@@ -99,9 +101,11 @@ Deno.serve(async (req: Request) => {
   const { data: tokens } = await admin.from("push_tokens").select("token, lang").eq("user_id", body.user_id);
   if (!tokens || tokens.length === 0) return json({ ok: true, sent: 0 });
 
-  const bearer = await accessToken(sa);
+  let bearer: string;
+  try { bearer = await accessToken(sa); } catch (e) { return json({ error: String((e as Error).message ?? e) }, 502); }
   const matchId = body.data?.match_id ?? "";
   let sent = 0;
+  const failed: number[] = [];  // FCM status codes, for net._http_response
   for (const t of tokens) {
     const lang: Lang = t.lang === "de" ? "de" : "en";
     const name = (body.data?.name ?? "").trim() || SOMEONE[lang];
@@ -124,7 +128,10 @@ Deno.serve(async (req: Request) => {
     });
     if (res.ok) {
       sent++;
-    } else if (res.status === 404 || res.status === 400) {
+      continue;
+    }
+    failed.push(res.status);
+    if (res.status === 404 || res.status === 400) {
       // The app was uninstalled or the token is no longer valid: forget it.
       const err = await res.text();
       if (err.includes("UNREGISTERED") || err.includes("INVALID_ARGUMENT") || res.status === 404) {
@@ -132,5 +139,5 @@ Deno.serve(async (req: Request) => {
       }
     }
   }
-  return json({ ok: true, sent });
+  return json({ ok: true, sent, failed });
 });
