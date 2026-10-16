@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "239364976295",
+    "project_id": "marry-match-app-a0004",
+    "storage_bucket": "marry-match-app-a0004.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:239364976295:android:e40161f942a5f948b9b582",
+        "android_client_info": {
+          "package_name": "de.marrymatch.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD0wrCT9wePobydCJmoUO4TZmuAZsFPU1s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

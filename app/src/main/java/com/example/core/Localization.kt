@@ -350,7 +350,6 @@ object Localization {
         "audit_user_unban" to "Unbanned",
         "settings_title" to "Settings",
         "settings_notifications" to "Notifications",
-        "settings_notifications_soon" to "Push notifications are not available yet. They will come in a later update.",
         "privacy_settings_title" to "Privacy & visibility",
         "privacy_intro" to "These settings are saved on our server and apply to what other members see.",
         "privacy_save_failed" to "The setting was not saved. Please check your connection and try again.",
@@ -381,7 +380,13 @@ object Localization {
         "delete_failed" to "The account was not deleted. Please check your connection and try again.",
         "legal_details_missing" to "The operator details are not filled in yet. They are required by law before the app is published.",
         "legal_draft" to "Draft: this text has not been checked by a lawyer yet.",
-        "audit_account_deleted" to "Account deleted by the user"
+        "audit_account_deleted" to "Account deleted by the user",
+        "notify_matches" to "New matches",
+        "notify_messages" to "New messages",
+        "notify_likes" to "Someone likes you",
+        "notifications_blocked" to "Notifications are turned off for MarryMatch on this phone.",
+        "notifications_open_settings" to "Turn on in phone settings",
+        "notifications_no_text" to "Notifications never show message text, only who wrote."
     )
 
     private val deStrings = mapOf(
@@ -722,7 +727,6 @@ object Localization {
         "audit_user_unban" to "Entsperrt",
         "settings_title" to "Einstellungen",
         "settings_notifications" to "Benachrichtigungen",
-        "settings_notifications_soon" to "Push-Benachrichtigungen gibt es noch nicht. Sie kommen mit einem späteren Update.",
         "privacy_settings_title" to "Privatsphäre & Sichtbarkeit",
         "privacy_intro" to "Diese Einstellungen werden auf unserem Server gespeichert und gelten für das, was andere Mitglieder sehen.",
         "privacy_save_failed" to "Die Einstellung wurde nicht gespeichert. Bitte prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
@@ -753,6 +757,12 @@ object Localization {
         "delete_failed" to "Das Konto wurde nicht gelöscht. Bitte prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
         "legal_details_missing" to "Die Angaben zum Anbieter fehlen noch. Sie sind gesetzlich vorgeschrieben, bevor die App veröffentlicht wird.",
         "legal_draft" to "Entwurf: Dieser Text wurde noch nicht anwaltlich geprüft.",
-        "audit_account_deleted" to "Konto vom Nutzer gelöscht"
+        "audit_account_deleted" to "Konto vom Nutzer gelöscht",
+        "notify_matches" to "Neue Matches",
+        "notify_messages" to "Neue Nachrichten",
+        "notify_likes" to "Jemand mag Sie",
+        "notifications_blocked" to "Benachrichtigungen sind für MarryMatch auf diesem Handy ausgeschaltet.",
+        "notifications_open_settings" to "In den Handy-Einstellungen einschalten",
+        "notifications_no_text" to "Benachrichtigungen zeigen nie den Nachrichtentext, nur wer geschrieben hat."
     )
 }

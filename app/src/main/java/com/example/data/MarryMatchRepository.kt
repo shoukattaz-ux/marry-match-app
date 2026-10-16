@@ -7,6 +7,7 @@ import com.example.model.MatchItem
 import com.example.model.ProfilePrompt
 import com.example.model.PromptCatalog
 import com.example.model.UserProfile
+import com.example.push.PushNotifications
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.OtpType
@@ -141,11 +142,12 @@ class MarryMatchRepository {
     private val _selectedRegionFilter = MutableStateFlow("All")
     val selectedRegionFilter: StateFlow<String> = _selectedRegionFilter.asStateFlow()
 
-    // Notification toggles
-    var notifyNewMatch: Boolean = true
-    var notifyNewMessage: Boolean = true
-    var notifyLikes: Boolean = true
-    var notifyDailyProfiles: Boolean = true
+    // Which pushes the user wants (stored on the server).
+    private val _notifications = MutableStateFlow(NotificationSettings())
+    val notifications: StateFlow<NotificationSettings> = _notifications.asStateFlow()
+
+    // The push token this phone registered for the signed-in account.
+    private var registeredPushToken: String? = null
 
     // Privacy settings, stored on the server and applied there to what others see.
     private val _privacy = MutableStateFlow(PrivacySettings())
@@ -377,6 +379,52 @@ class MarryMatchRepository {
             applyProfile(profile)
             _authState.value = AuthState.LOGGED_IN
             refreshMatches()
+            registerPush()
+        }
+    }
+
+    /** Links this phone to the account for pushes (language decides the push texts). */
+    fun registerPush() {
+        val api = _account ?: return
+        if (_currentUser.value.id.isBlank()) return
+        repositoryScope.launch {
+            val token = PushNotifications.currentToken() ?: return@launch
+            try {
+                api.registerPushToken(token, if (_appLanguage.value == AppLanguage.DE) "de" else "en")
+                registeredPushToken = token
+            } catch (e: Throwable) {
+                Log.w("MarryMatchRepository", "Push registration failed: ${e.message}")
+            }
+        }
+    }
+
+    /** Firebase gave this phone a new token. */
+    fun onPushTokenChanged(token: String) {
+        if (token != registeredPushToken) registerPush()
+    }
+
+    suspend fun loadNotifications() {
+        val api = _account ?: return
+        if (_currentUser.value.id.isBlank()) return
+        try {
+            _notifications.value = api.loadNotifications()
+        } catch (e: Throwable) {
+            Log.w("MarryMatchRepository", "Could not load notification settings: ${e.message}")
+        }
+    }
+
+    /** Shows the change right away and saves it; on failure the old settings come back. */
+    suspend fun updateNotifications(change: (NotificationSettings) -> NotificationSettings): Result<Unit> {
+        val api = _account ?: return Result.failure(IllegalStateException("Supabase is not configured."))
+        val before = _notifications.value
+        val after = change(before)
+        _notifications.value = after
+        return try {
+            api.saveNotifications(after)
+            Result.success(Unit)
+        } catch (e: Throwable) {
+            _notifications.value = before
+            Result.failure(e)
         }
     }
 
@@ -430,6 +478,7 @@ class MarryMatchRepository {
 
     fun onOnboardingFinished() {
         _authState.value = AuthState.LOGGED_IN
+        registerPush()
     }
 
     private fun applyProfile(profile: MyProfile) {
@@ -503,8 +552,15 @@ class MarryMatchRepository {
     }
 
     fun signOut() {
+        val pushToken = registeredPushToken
+        registeredPushToken = null
         repositoryScope.launch {
             _photoLinks?.clear()
+            // Stop pushes for this account on this phone before the session ends.
+            if (pushToken != null) {
+                runCatching { _account?.unregisterPushToken(pushToken) }
+                PushNotifications.deleteToken()
+            }
             try {
                 _supabase?.auth?.signOut()
             } catch (e: Throwable) {
@@ -519,6 +575,7 @@ class MarryMatchRepository {
         _matchCelebration.value = null
         _selfieStatus.value = SelfieStatus(SelfieStatus.NONE)
         _privacy.value = PrivacySettings()
+        _notifications.value = NotificationSettings()
         _authState.value = AuthState.WELCOME
     }
 
@@ -580,10 +637,11 @@ class MarryMatchRepository {
 
     fun setLanguage(lang: AppLanguage) {
         _appLanguage.value = lang
+        registerPush()  // pushes follow the app language
     }
 
     fun toggleLanguage() {
-        _appLanguage.value = if (_appLanguage.value == AppLanguage.EN) AppLanguage.DE else AppLanguage.EN
+        setLanguage(if (_appLanguage.value == AppLanguage.EN) AppLanguage.DE else AppLanguage.EN)
     }
 
     fun setAuthState(state: AuthState) {

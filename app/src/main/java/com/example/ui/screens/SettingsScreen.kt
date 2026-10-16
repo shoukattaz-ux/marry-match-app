@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.provider.Settings
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,6 +34,8 @@ import com.example.core.AppConfig
 import com.example.core.AppLanguage
 import com.example.core.Localization
 import com.example.data.MarryMatchRepository
+import com.example.data.NotificationSettings
+import com.example.push.PushNotifications
 import com.example.ui.theme.extendedColors
 import kotlinx.coroutines.launch
 
@@ -49,6 +55,17 @@ fun SettingsScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val (exporting, startExport) = rememberDataExport(repository) { msg -> scope.launch { snackbar.showSnackbar(msg) } }
+    val context = LocalContext.current
+    val notifications by repository.notifications.collectAsState()
+    LaunchedEffect(Unit) { repository.loadNotifications() }
+
+    fun changeNotifications(update: (NotificationSettings) -> NotificationSettings) {
+        scope.launch {
+            repository.updateNotifications(update).onFailure {
+                snackbar.showSnackbar(Localization.t("privacy_save_failed", lang))
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -98,7 +115,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Push notifications are not built yet; say so instead of showing switches that do nothing.
+            // Push notifications: which kinds the server sends (saved on the profile).
             Text(Localization.t("settings_notifications", lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Card(
                 shape = RoundedCornerShape(12.dp),
@@ -106,9 +123,37 @@ fun SettingsScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Icon(Icons.Default.Notifications, contentDescription = null, tint = MaterialTheme.extendedColors.muted)
-                    Text(Localization.t("settings_notifications_soon", lang), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (!PushNotifications.canNotify(context)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Icon(Icons.Default.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            Text(Localization.t("notifications_blocked", lang), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        }
+                        TextButton(onClick = {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            )
+                        }) { Text(Localization.t("notifications_open_settings", lang)) }
+                        HorizontalDivider()
+                    }
+                    NotificationToggleRow(
+                        title = Localization.t("notify_matches", lang),
+                        checked = notifications.matches,
+                        onCheckedChange = { on -> changeNotifications { it.copy(matches = on) } }
+                    )
+                    HorizontalDivider()
+                    NotificationToggleRow(
+                        title = Localization.t("notify_messages", lang),
+                        checked = notifications.messages,
+                        onCheckedChange = { on -> changeNotifications { it.copy(messages = on) } }
+                    )
+                    HorizontalDivider()
+                    NotificationToggleRow(
+                        title = Localization.t("notify_likes", lang),
+                        checked = notifications.likes,
+                        onCheckedChange = { on -> changeNotifications { it.copy(likes = on) } }
+                    )
+                    Text(Localization.t("notifications_no_text", lang), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
                 }
             }
 

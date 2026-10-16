@@ -2,6 +2,7 @@ package com.example
 
 import android.app.Application
 import com.example.data.MarryMatchRepository
+import com.example.push.PushNotifications
 
 /**
  * Custom Application class that retains the [MarryMatchRepository]
@@ -10,5 +11,10 @@ import com.example.data.MarryMatchRepository
 class MarryMatchApplication : Application() {
     val repository: MarryMatchRepository by lazy {
         MarryMatchRepository()
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        PushNotifications.createChannel(this)
     }
 }

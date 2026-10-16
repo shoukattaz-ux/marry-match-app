@@ -1,6 +1,13 @@
 package com.example.ui
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
+import com.example.push.PushNotifications
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -99,6 +106,7 @@ fun MainApp(
             OnboardingScreen(repository = repository)
         }
         AuthState.LOGGED_IN -> {
+            AskForNotificationPermission()
             // Main Authenticated Experience
             if (activeSubScreen != ActiveSubScreen.NONE) {
                 when (activeSubScreen) {
@@ -284,5 +292,23 @@ fun MainApp(
             repository = repository,
             onDismiss = { reportUserTarget = null }
         )
+    }
+}
+
+/**
+ * Android 13+ needs the user's permission before notifications can be shown. Asked once per
+ * app start after login; saying no is fine, the switches in Settings explain it again.
+ */
+@Composable
+private fun AskForNotificationPermission() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+    val context = LocalContext.current
+    var asked by rememberSaveable { mutableStateOf(false) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(Unit) {
+        if (!asked && !PushNotifications.canNotify(context)) {
+            asked = true
+            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 }

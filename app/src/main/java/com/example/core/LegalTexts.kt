@@ -55,6 +55,7 @@ object LegalTexts {
                     "• Profile photos are private. The app loads them through links that work for one hour, and our server creates such links only for you, your matches, members who get you as a daily suggestion, and moderators.\n" +
                     "• Moderators see reports, the reported messages and selfies waiting for review.\n" +
                     "• Hosting: Supabase (database, file storage, server functions), servers in Frankfurt am Main, EU. Supabase processes the data on our behalf under a data processing agreement (Art. 28 GDPR).\n" +
+                    "• Push notifications are delivered by Google Firebase Cloud Messaging (Google Ireland Ltd.). For this we store a device code (push token) and the language of your app; a push contains only its kind and, for matches and messages, the other person's first name, never message text. Google may process this data in the USA; the transfer is based on the EU-US Data Privacy Framework and standard contractual clauses (Art. 45 and 46 GDPR). You can turn pushes off in Settings or in your phone's settings.\n" +
                     "We do not sell data, show no advertising and use no analytics or tracking tools.",
                 "7. How long we keep it" to
                     "• Your data is kept until you delete your account. Deleting it in the app removes your profile, photos, matches, chats, likes and consents right away.\n" +
@@ -84,6 +85,7 @@ object LegalTexts {
                     "• Profilfotos sind privat. Die App lädt sie über Links, die eine Stunde gültig sind, und unser Server erstellt solche Links nur für Sie, Ihre Matches, Mitglieder, die Sie als täglichen Vorschlag bekommen, und Moderatoren.\n" +
                     "• Moderatoren sehen Meldungen, die gemeldeten Nachrichten und Selfies, die auf Prüfung warten.\n" +
                     "• Hosting: Supabase (Datenbank, Dateispeicher, Serverfunktionen), Server in Frankfurt am Main, EU. Supabase verarbeitet die Daten in unserem Auftrag auf Grundlage eines Auftragsverarbeitungsvertrags (Art. 28 DSGVO).\n" +
+                    "• Push-Benachrichtigungen werden über Google Firebase Cloud Messaging (Google Ireland Ltd.) zugestellt. Dafür speichern wir einen Gerätecode (Push-Token) und die Sprache Ihrer App; eine Benachrichtigung enthält nur ihre Art und bei Matches und Nachrichten den Vornamen der anderen Person, nie Nachrichtentext. Google kann diese Daten in den USA verarbeiten; die Übermittlung stützt sich auf das EU-US Data Privacy Framework und Standardvertragsklauseln (Art. 45 und 46 DSGVO). Sie können Benachrichtigungen in den Einstellungen oder in den Einstellungen Ihres Handys ausschalten.\n" +
                     "Wir verkaufen keine Daten, zeigen keine Werbung und nutzen keine Analyse- oder Tracking-Werkzeuge.",
                 "7. Wie lange wir Daten speichern" to
                     "• Ihre Daten bleiben gespeichert, bis Sie Ihr Konto löschen. Die Löschung in der App entfernt Profil, Fotos, Matches, Chats, Likes und Einwilligungen sofort.\n" +

@@ -30,10 +30,23 @@ data class PrivacySettings(
     @SerialName("hide_occupation") val hideOccupation: Boolean = false
 )
 
-/** The user's own account: privacy settings, data export and deletion. */
+/** Which pushes the user wants; the database checks these before queuing a push. */
+@Serializable
+data class NotificationSettings(
+    @SerialName("notify_matches") val matches: Boolean = true,
+    @SerialName("notify_messages") val messages: Boolean = true,
+    @SerialName("notify_likes") val likes: Boolean = true
+)
+
+/** The user's own account: privacy and push settings, device registration, export and deletion. */
 interface AccountApi {
     suspend fun loadPrivacy(): PrivacySettings
     suspend fun savePrivacy(settings: PrivacySettings)
+    suspend fun loadNotifications(): NotificationSettings
+    suspend fun saveNotifications(settings: NotificationSettings)
+    /** Links this phone's push token to the signed-in account; [lang] is "en" or "de". */
+    suspend fun registerPushToken(token: String, lang: String)
+    suspend fun unregisterPushToken(token: String)
     /** All stored data about the user as pretty-printed JSON (GDPR Art. 15 and 20). */
     suspend fun exportData(): String
     /** Deletes the account on the server for good (GDPR Art. 17). */
@@ -65,6 +78,30 @@ class SupabaseAccountService(
             put("hide_religion", settings.hideReligion)
             put("hide_occupation", settings.hideOccupation)
         }) { filter { eq("id", currentUserId()) } }
+    }
+
+    override suspend fun loadNotifications(): NotificationSettings =
+        client.from("profiles")
+            .select(columns = Columns.list("notify_matches", "notify_messages", "notify_likes")) { filter { eq("id", currentUserId()) } }
+            .decodeSingleOrNull<NotificationSettings>() ?: NotificationSettings()
+
+    override suspend fun saveNotifications(settings: NotificationSettings) {
+        client.from("profiles").update(buildJsonObject {
+            put("notify_matches", settings.matches)
+            put("notify_messages", settings.messages)
+            put("notify_likes", settings.likes)
+        }) { filter { eq("id", currentUserId()) } }
+    }
+
+    override suspend fun registerPushToken(token: String, lang: String) {
+        client.postgrest.rpc("register_push_token", buildJsonObject {
+            put("p_token", token)
+            put("p_lang", lang)
+        })
+    }
+
+    override suspend fun unregisterPushToken(token: String) {
+        client.postgrest.rpc("unregister_push_token", buildJsonObject { put("p_token", token) })
     }
 
     override suspend fun exportData(): String {
