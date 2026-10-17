@@ -45,6 +45,8 @@ data class MatchSummary(
     val matchedAt: String,
     val user: UserProfile,
     val lastMessage: String? = null,
+    /** "text", "image", "voice" or "video" */
+    val lastMessageType: String? = null,
     val lastMessageAt: String? = null,
     val unreadCount: Int = 0,
     /** Set while nobody has written yet: the match disappears at this time (7 days after matching). */
@@ -125,6 +127,7 @@ private data class MatchDto(
     @SerialName("i_met") val iMet: Boolean = false,
     @SerialName("they_met") val theyMet: Boolean = false,
     @SerialName("last_message") val lastMessage: String? = null,
+    @SerialName("last_message_type") val lastMessageType: String? = null,
     @SerialName("last_message_at") val lastMessageAt: String? = null,
     val unread: Int = 0
 )
@@ -198,6 +201,7 @@ class SupabaseDiscoveryService(
                     interests = emptyList()
                 ),
                 lastMessage = m.lastMessage,
+                lastMessageType = m.lastMessageType,
                 lastMessageAt = m.lastMessageAt,
                 unreadCount = m.unread,
                 expiresAt = m.expiresAt,

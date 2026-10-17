@@ -47,7 +47,8 @@ enum class ActiveSubScreen {
     SELFIE_VERIFICATION,
     PRIVACY_SETTINGS,
     PROFILE_CREATION,
-    CHAPERONE
+    CHAPERONE,
+    CHAT_MEDIA_SETTINGS
 }
 
 @Composable
@@ -132,7 +133,8 @@ fun MainApp(
                             onBack = { activeSubScreen = ActiveSubScreen.NONE },
                             onOpenSafety = { activeSubScreen = ActiveSubScreen.SAFETY_CENTER },
                             onOpenPrivacySettings = { activeSubScreen = ActiveSubScreen.PRIVACY_SETTINGS },
-                            onOpenChaperone = { activeSubScreen = ActiveSubScreen.CHAPERONE }
+                            onOpenChaperone = { activeSubScreen = ActiveSubScreen.CHAPERONE },
+                            onOpenChatMedia = { activeSubScreen = ActiveSubScreen.CHAT_MEDIA_SETTINGS }
                         )
                     }
                     ActiveSubScreen.SAFETY_CENTER -> {
@@ -173,6 +175,13 @@ fun MainApp(
                     ActiveSubScreen.CHAPERONE -> {
                         BackHandler { activeSubScreen = ActiveSubScreen.SETTINGS }
                         ChaperoneScreen(
+                            repository = repository,
+                            onBack = { activeSubScreen = ActiveSubScreen.SETTINGS }
+                        )
+                    }
+                    ActiveSubScreen.CHAT_MEDIA_SETTINGS -> {
+                        BackHandler { activeSubScreen = ActiveSubScreen.SETTINGS }
+                        ChatMediaSettingsScreen(
                             repository = repository,
                             onBack = { activeSubScreen = ActiveSubScreen.SETTINGS }
                         )

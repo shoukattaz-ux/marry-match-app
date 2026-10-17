@@ -47,8 +47,11 @@ data class WardMatch(
 data class WardMessage(
     val id: String,
     @SerialName("from_member") val fromMember: Boolean,
-    val body: String,
-    @SerialName("sent_at") val sentAt: String
+    /** Text or caption; null for a photo, voice message or video without caption. */
+    val body: String? = null,
+    @SerialName("sent_at") val sentAt: String,
+    /** "text", "image", "voice" or "video"; the chaperone never gets the file itself. */
+    val type: String = "text"
 )
 
 /** Chaperone mode on the server (migration 020). An interface so the screen logic can be tested. */

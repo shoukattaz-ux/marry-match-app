@@ -112,12 +112,13 @@ object PhotoProcessor {
             }
     }
 
-    private fun decodeUpright(context: Context, uri: Uri): Bitmap {
+    /** Upright bitmap at most [maxSide] px on the long side (EXIF rotation applied). */
+    internal fun decodeUpright(context: Context, uri: Uri, maxSide: Int = MAX_SIDE_PX): Bitmap {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             // ImageDecoder applies the EXIF rotation itself.
             val source = ImageDecoder.createSource(context.contentResolver, uri)
             return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-                val scale = scaleFor(info.size.width, info.size.height)
+                val scale = scaleFor(info.size.width, info.size.height, maxSide)
                 decoder.setTargetSize((info.size.width * scale).roundToInt(), (info.size.height * scale).roundToInt())
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             }
@@ -127,7 +128,7 @@ object PhotoProcessor {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         var sample = 1
-        while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= MAX_SIDE_PX) sample *= 2
+        while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
         val decoded = resolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
         } ?: throw IllegalArgumentException("Unreadable image")
@@ -143,15 +144,15 @@ object PhotoProcessor {
             ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
             ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
         }
-        val scale = scaleFor(decoded.width, decoded.height)
+        val scale = scaleFor(decoded.width, decoded.height, maxSide)
         matrix.postScale(scale, scale)
         val result = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
         if (result !== decoded) decoded.recycle()
         return result
     }
 
-    private fun scaleFor(width: Int, height: Int): Float {
+    private fun scaleFor(width: Int, height: Int, maxSide: Int): Float {
         val longSide = max(width, height)
-        return if (longSide > MAX_SIDE_PX) MAX_SIDE_PX.toFloat() / longSide else 1f
+        return if (longSide > maxSide) maxSide.toFloat() / longSide else 1f
     }
 }

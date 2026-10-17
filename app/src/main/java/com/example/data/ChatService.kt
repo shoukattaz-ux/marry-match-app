@@ -1,6 +1,7 @@
 package com.example.data
 
 import com.example.model.ChatMessage
+import com.example.model.MessageMedia
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
@@ -79,18 +80,28 @@ internal data class MessageRow(
     val id: String,
     @SerialName("match_id") val matchId: String,
     @SerialName("sender_id") val senderId: String,
-    val body: String,
+    val body: String? = null,
     @SerialName("created_at") val createdAt: String,
-    @SerialName("read_at") val readAt: String? = null
+    @SerialName("read_at") val readAt: String? = null,
+    val type: String = "text",
+    @SerialName("media_path") val mediaPath: String? = null,
+    @SerialName("thumb_path") val thumbPath: String? = null,
+    @SerialName("media_bytes") val mediaBytes: Long? = null,
+    @SerialName("duration_ms") val durationMs: Long? = null,
+    @SerialName("media_status") val mediaStatus: String? = null
 ) {
     fun toChatMessage() = ChatMessage(
         id = id,
         matchId = matchId,
         senderId = senderId,
-        body = body,
+        body = body.orEmpty(),
         timestamp = ChatTime.format(createdAt),
         isRead = readAt != null,
-        createdAt = createdAt
+        createdAt = createdAt,
+        type = type,
+        media = mediaPath?.let {
+            MessageMedia(it, thumbPath, mediaBytes, durationMs, mediaStatus ?: "uploaded")
+        }
     )
 }
 
@@ -198,7 +209,10 @@ class SupabaseChatService(
         private const val TYPING_EVENT = "typing"
         private const val JOIN_TIMEOUT_MS = 10_000L
         const val PAGE_SIZE = 200L
-        private val MESSAGE_COLUMNS = listOf("id", "match_id", "sender_id", "body", "created_at", "read_at")
+        private val MESSAGE_COLUMNS = listOf(
+            "id", "match_id", "sender_id", "body", "created_at", "read_at",
+            "type", "media_path", "thumb_path", "media_bytes", "duration_ms", "media_status"
+        )
     }
 }
 

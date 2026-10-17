@@ -460,7 +460,7 @@ private fun WardChat(
                                 color = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                                 modifier = Modifier.widthIn(max = 300.dp)
                             ) {
-                                Text(msg.body, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
+                                Text(mediaLabel(msg.type, lang, msg.body.orEmpty()), modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
@@ -468,4 +468,16 @@ private fun WardChat(
             }
         }
     }
+}
+
+/** "📷 Photo: caption" for media; plain text otherwise. Shared with the match list. */
+fun mediaLabel(type: String?, lang: AppLanguage, body: String): String {
+    val key = when (type) {
+        "image" -> "media_label_photo"
+        "voice" -> "media_label_voice"
+        "video" -> "media_label_video"
+        else -> return body
+    }
+    val label = Localization.t(key, lang)
+    return if (body.isBlank()) label else "$label: $body"
 }

@@ -44,6 +44,14 @@ import com.example.core.Localization
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.MarryMatchRepository
 import com.example.ui.viewmodel.ChatViewModel
+import com.example.ui.chat.AttachButton
+import com.example.ui.chat.Banners
+import com.example.ui.chat.Dialogs
+import com.example.ui.chat.MessageItem
+import com.example.ui.chat.MicButton
+import com.example.ui.chat.PendingItem
+import com.example.ui.chat.RecordingBar
+import com.example.ui.chat.rememberChatMediaUi
 import com.example.model.ChatMessage
 import com.example.model.MatchItem
 import com.example.ui.components.ChatPeerStatus
@@ -75,6 +83,22 @@ fun ChatScreen(
     val chatState by chatViewModel.state.collectAsState()
     val messages = chatState.messages
 
+    // Photos, voice messages and videos (WhatsApp-style, migration 023)
+    val media = rememberChatMediaUi(match.id, repository) { chatViewModel.load() }
+    val outbox by media.controller.outbox.collectAsState()
+    val blockedIds by repository.blockedUserIds.collectAsState()
+    val isBlocked = match.matchedUser.id in blockedIds
+    LaunchedEffect(isBlocked) {
+        media.blocked = isBlocked
+        if (isBlocked) media.controller.stopChat()
+    }
+    LaunchedEffect(messages) {
+        media.voicePlayer.queue = { media.voiceQueue(messages) }
+        if (!isBlocked) media.controller.autoDownload(messages)
+    }
+    val pendingMedia = media.pendingFor(messages, outbox)
+    val mediaContext = androidx.compose.ui.platform.LocalContext.current
+
     var messageInput by remember { mutableStateOf("") }
     var lastDraft by remember { mutableStateOf("") }
     var reportedMessage by remember { mutableStateOf<ChatMessage?>(null) }
@@ -96,8 +120,8 @@ fun ChatScreen(
     )
 
     // Keep the newest message in view
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(listState.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1)
+    LaunchedEffect(messages.size, pendingMedia.size) {
+        if (messages.isNotEmpty() || pendingMedia.isNotEmpty()) listState.animateScrollToItem(listState.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1)
     }
 
     // A failed send puts the text back so nothing is lost
@@ -336,11 +360,18 @@ fun ChatScreen(
                 }
                 items(messages, key = { it.id }) { msg ->
                     val isMe = msg.senderId == user.id
-                    ChatBubble(
-                        message = msg,
-                        isMe = isMe,
-                        onLongPress = if (isMe) null else ({ reportedMessage = msg })
-                    )
+                    if (msg.type != "text" && msg.media != null) {
+                        media.MessageItem(msg, lang) { reportedMessage = it }
+                    } else {
+                        ChatBubble(
+                            message = msg,
+                            isMe = isMe,
+                            onLongPress = if (isMe) null else ({ reportedMessage = msg })
+                        )
+                    }
+                }
+                items(pendingMedia, key = { "pending-${it.messageId}" }) { pending ->
+                    media.PendingItem(pending, lang)
                 }
             }
 
@@ -367,6 +398,8 @@ fun ChatScreen(
                     )
                 }
             }
+
+            media.Banners(lang)
 
             chatState.errorKey?.let { key ->
                 Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { chatViewModel.clearError() }) {
@@ -427,7 +460,19 @@ fun ChatScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedTextField(
+                        val recording = media.recording
+                        if (!isBlocked && recording == null) {
+                            AttachButton(lang = lang, enabled = !isBlocked, onChoose = media::onAttach)
+                        }
+                        if (recording != null) {
+                            RecordingBar(
+                                recording = recording,
+                                lang = lang,
+                                onCancel = { media.finishRecording(send = false) },
+                                onSend = { media.finishRecording(send = true) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else OutlinedTextField(
                             value = messageInput,
                             onValueChange = {
                                 if (it.length <= 2000) {
@@ -443,7 +488,18 @@ fun ChatScreen(
                                 .testTag("chat_message_input")
                         )
 
-                        IconButton(
+                        if (messageInput.isBlank() && !isBlocked && recording?.locked != true) {
+                            // Hold to record; the button stays in place during the gesture.
+                            MicButton(
+                                lang = lang,
+                                enabled = !isBlocked,
+                                onPress = media::startRecording,
+                                onDrag = { media.recording?.dragX = it },
+                                onRelease = { media.finishRecording(send = true) },
+                                onCancel = { media.finishRecording(send = false) },
+                                onLock = { media.recording?.locked = true }
+                            )
+                        } else if (recording == null) IconButton(
                             onClick = {
                                 if (messageInput.isNotBlank()) {
                                     lastDraft = messageInput
@@ -518,6 +574,10 @@ fun ChatScreen(
                             "3. Betrugsschutz: Zu Ihrer Sicherheit warnen clientseitige Schutzmechanismen vor verdächtigen Geldüberweisungen.",
                         style = MaterialTheme.typography.bodySmall
                     )
+                    Text(
+                        text = "4. " + Localization.t("media_retention_info", lang),
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             },
             confirmButton = {
@@ -561,6 +621,9 @@ fun ChatScreen(
                 TextButton(
                     onClick = {
                         showUnmatchConfirm = false
+                        // The chat is deleted for both: stop its transfers and remove its files from this phone.
+                        media.controller.stopChat()
+                        com.example.data.media.MediaFiles.deleteChat(mediaContext, match.id)
                         repository.unmatch(match.id)
                         onBack()
                     }
@@ -593,6 +656,7 @@ fun ChatScreen(
                 TextButton(
                     onClick = {
                         showBlockConfirm = false
+                        media.controller.stopChat()
                         repository.blockUser(match.matchedUser.id)
                         onBack()
                     }
@@ -607,6 +671,8 @@ fun ChatScreen(
             }
         )
     }
+
+    media.Dialogs(messages, lang) { reportedMessage = it }
 
     // Report one message (long-press on the other person's message)
     reportedMessage?.let { message ->

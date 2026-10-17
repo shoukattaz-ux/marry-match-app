@@ -468,7 +468,7 @@ class MarryMatchRepository {
                     id = m.matchId,
                     matchedUser = m.user,
                     matchedAt = m.matchedAt,
-                    lastMessage = m.lastMessage.orEmpty(),
+                    lastMessage = com.example.ui.screens.mediaLabel(m.lastMessageType, _appLanguage.value, m.lastMessage.orEmpty()),
                     lastMessageTime = m.lastMessageAt?.let { ChatTime.format(it) }.orEmpty(),
                     unread = m.unreadCount > 0,
                     expiresInDays = m.expiresAt?.let { MatchExpiry.daysLeft(it) },

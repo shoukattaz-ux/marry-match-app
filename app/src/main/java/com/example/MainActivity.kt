@@ -29,6 +29,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         // Coming back to the app counts as being active (only after login; throttled on the server).
-        (application as MarryMatchApplication).repository.onAppActive()
+        val repository = (application as MarryMatchApplication).repository
+        repository.onAppActive()
+        // Received photos, voice messages and videos download per Settings > Chat media.
+        if (repository.authState.value == com.example.data.AuthState.LOGGED_IN) {
+            com.example.data.media.ChatMediaManager.sync(this, null)
+        }
     }
 }

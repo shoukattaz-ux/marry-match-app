@@ -92,5 +92,9 @@ class MarryMatchMessagingService : FirebaseMessagingService() {
         PushNotifications.show(this, n.title.orEmpty(), n.body.orEmpty(), "${kind}_${message.data["match_id"].orEmpty()}")
         // Keep the open app in step with what the push announced.
         (application as? MarryMatchApplication)?.repository?.refreshMatches()
+        // A new message may be a photo, voice message or video: download it now if the settings allow.
+        if (kind == "message") {
+            com.example.data.media.ChatMediaManager.sync(this, message.data["match_id"]?.takeIf { it.isNotBlank() })
+        }
     }
 }
