@@ -90,6 +90,12 @@ class AdminViewModel(private val api: AdminApi?) : ViewModel() {
             it.moderate(if (banned) ModerationAction.BAN else ModerationAction.UNBAN, userId = user.userId, note = note)
         }
 
+    /** The location check switch: the screen has already asked the admin to confirm switching it off. */
+    fun setLocationCheck(enabled: Boolean) =
+        act("location_check", if (enabled) "admin_done_location_on" else "admin_done_location_off") {
+            it.setLocationCheck(enabled)
+        }
+
     fun clearMessages() = _state.update { it.copy(errorKey = null, doneKey = null) }
 
     /** Runs one moderation action, then reloads what it changed. */

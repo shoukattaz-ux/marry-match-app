@@ -44,6 +44,7 @@ sealed class LocationGateOutcome {
 object LocationGateService {
 
     const val CHECK_GERMANY_URL = "https://zaixmvhfblgarpjckjhc.supabase.co/functions/v1/check-germany"
+    const val LOCATION_SWITCH_URL = "https://zaixmvhfblgarpjckjhc.supabase.co/functions/v1/location-switch"
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -193,6 +194,47 @@ object LocationGateService {
             } catch (e: Throwable) {
                 LocationGateOutcome.NetworkError("Unexpected error during verification: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * Asks the server whether the Germany check is on (Admin > Overview switch). Any failure counts
+     * as "on", so the normal GPS check runs.
+     */
+    suspend fun isCheckRequired(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            postToSwitch("""{"probe":true}""", null)
+                ?.let { JSONObject(it).optBoolean("required", true) }
+                ?: true
+        } catch (e: Throwable) {
+            true
+        }
+    }
+
+    /**
+     * While the check is switched off: signs up or logs in without GPS. Returns null when the
+     * server says the check is on after all (then the normal check runs). The server decides;
+     * it refuses this whenever the check is on.
+     */
+    suspend fun skipCheck(accessToken: String? = null): LocationGateOutcome? = withContext(Dispatchers.IO) {
+        try {
+            val body = postToSwitch("""{"skip":true}""", accessToken)
+                ?: return@withContext LocationGateOutcome.NetworkError("Server did not accept the request")
+            if (JSONObject(body).optBoolean("required", false)) null else parseGateResponse(body)
+        } catch (e: Throwable) {
+            LocationGateOutcome.NetworkError("Network connection failure: ${e.message}")
+        }
+    }
+
+    private fun postToSwitch(json: String, accessToken: String?): String? {
+        val builder = Request.Builder()
+            .url(LOCATION_SWITCH_URL)
+            .addHeader("apikey", AppConfig.SUPABASE_ANON_KEY)
+            .addHeader("Content-Type", "application/json")
+            .post(json.toRequestBody("application/json; charset=utf-8".toMediaType()))
+        if (!accessToken.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $accessToken")
+        httpClient.newCall(builder.build()).execute().use { response ->
+            return if (response.isSuccessful) response.body?.string() else null
         }
     }
 

@@ -93,6 +93,12 @@ class SupabaseAuthTest {
             com.example.core.LocationGateService.CHECK_GERMANY_URL
         )
 
+        // The admin switch for the check lives in its own function (default: check is on).
+        assertEquals(
+            "https://zaixmvhfblgarpjckjhc.supabase.co/functions/v1/location-switch",
+            com.example.core.LocationGateService.LOCATION_SWITCH_URL
+        )
+
         // 2. Initial user must not have any hardcoded city
         assertEquals("", repository.currentUser.value.city)
         assertEquals("", repository.currentUser.value.region)

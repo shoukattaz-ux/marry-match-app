@@ -34,7 +34,9 @@ data class AdminStats(
     @SerialName("needs_review") val needsReview: Int = 0,
     /** Couples where both confirmed "We met", and meetings someone marked unsafe (last 30 days). */
     @SerialName("met_couples") val metCouples: Int = 0,
-    @SerialName("met_unsafe_30d") val metUnsafe30d: Int = 0
+    @SerialName("met_unsafe_30d") val metUnsafe30d: Int = 0,
+    /** The Germany location check at sign-up. Off only for testing; on by default (migration 024). */
+    @SerialName("location_check") val locationCheck: Boolean = true
 )
 
 @Serializable
@@ -98,6 +100,10 @@ interface AdminApi {
     suspend fun searchUsers(query: String): List<AdminUser>
     suspend fun auditLog(limit: Int = 100): List<AuditEntry>
     suspend fun moderate(action: ModerationAction, userId: String? = null, reportId: String? = null, note: String? = null)
+    /** Switches the Germany location check on or off; the server allows admins only and logs it. */
+    suspend fun setLocationCheck(enabled: Boolean) {
+        throw UnsupportedOperationException("admin_set_location_check")
+    }
 }
 
 /** A moderation call refused by the server; [code] is e.g. "report_not_open" or "cannot_moderate_admin". */
@@ -121,6 +127,10 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
 
     override suspend fun auditLog(limit: Int): List<AuditEntry> =
         client.postgrest.rpc("admin_audit_log", buildJsonObject { put("p_limit", limit) }).decodeAs<List<AuditEntry>>()
+
+    override suspend fun setLocationCheck(enabled: Boolean) {
+        client.postgrest.rpc("admin_set_location_check", buildJsonObject { put("p_enabled", enabled) })
+    }
 
     override suspend fun moderate(action: ModerationAction, userId: String?, reportId: String?, note: String?) {
         val token = client.auth.currentSessionOrNull()?.accessToken ?: throw IllegalStateException("Not signed in")

@@ -55,6 +55,34 @@ fun LocationGateScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var permissionDeniedNotice by remember { mutableStateOf(false) }
 
+    fun handleOutcome(outcome: LocationGateOutcome) {
+        when (outcome) {
+            is LocationGateOutcome.Allowed -> {
+                if (!isPostLogin && outcome.signupPass == null) {
+                    // Sign-up is impossible without a pass, so treat this like a server error.
+                    errorMessage = Localization.t("location_network_error", lang)
+                } else {
+                    repository.onLocationGatePassed(outcome.signupPass)
+                }
+            }
+            is LocationGateOutcome.NotAllowed -> {
+                repository.setAuthState(AuthState.LOCATION_REJECTED)
+            }
+            is LocationGateOutcome.PermissionDenied -> {
+                permissionDeniedNotice = true
+            }
+            is LocationGateOutcome.GpsUnavailable -> {
+                errorMessage = Localization.t("location_gps_error", lang)
+            }
+            is LocationGateOutcome.NetworkError -> {
+                errorMessage = Localization.t("location_network_error", lang)
+            }
+            is LocationGateOutcome.MockRejected -> {
+                errorMessage = Localization.t("location_mock_error", lang)
+            }
+        }
+    }
+
     fun runLocationVerification() {
         val hasPermission = ContextCompat.checkSelfPermission(
             context,
@@ -74,32 +102,7 @@ fun LocationGateScreen(
             val token = if (isPostLogin) repository.getCurrentAccessToken() else null
             val outcome = LocationGateService.verifyLocationInGermany(context, token)
             isChecking = false
-
-            when (outcome) {
-                is LocationGateOutcome.Allowed -> {
-                    if (!isPostLogin && outcome.signupPass == null) {
-                        // Sign-up is impossible without a pass, so treat this like a server error.
-                        errorMessage = Localization.t("location_network_error", lang)
-                    } else {
-                        repository.onLocationGatePassed(outcome.signupPass)
-                    }
-                }
-                is LocationGateOutcome.NotAllowed -> {
-                    repository.setAuthState(AuthState.LOCATION_REJECTED)
-                }
-                is LocationGateOutcome.PermissionDenied -> {
-                    permissionDeniedNotice = true
-                }
-                is LocationGateOutcome.GpsUnavailable -> {
-                    errorMessage = Localization.t("location_gps_error", lang)
-                }
-                is LocationGateOutcome.NetworkError -> {
-                    errorMessage = Localization.t("location_network_error", lang)
-                }
-                is LocationGateOutcome.MockRejected -> {
-                    errorMessage = Localization.t("location_mock_error", lang)
-                }
-            }
+            handleOutcome(outcome)
         }
     }
 
@@ -112,6 +115,33 @@ fun LocationGateScreen(
         } else {
             permissionDeniedNotice = true
             isChecking = false
+        }
+    }
+
+    /**
+     * Start of every check: the server says whether the admin switch has the location check on.
+     * If it is off, no permission and no GPS are needed; otherwise the normal flow runs.
+     */
+    fun begin() {
+        isChecking = true
+        errorMessage = null
+        permissionDeniedNotice = false
+        coroutineScope.launch {
+            if (!LocationGateService.isCheckRequired()) {
+                val token = if (isPostLogin) repository.getCurrentAccessToken() else null
+                val skipped = LocationGateService.skipCheck(token)
+                if (skipped != null) {
+                    isChecking = false
+                    handleOutcome(skipped)
+                    return@launch
+                }
+            }
+            isChecking = false
+            val hasPermission = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (hasPermission) runLocationVerification() else permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
     }
 
@@ -309,33 +339,13 @@ fun LocationGateScreen(
                 } else if (errorMessage != null) {
                     MarryPrimaryButton(
                         text = Localization.t("try_again", lang),
-                        onClick = {
-                            val hasPermission = ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.ACCESS_FINE_LOCATION
-                            ) == PackageManager.PERMISSION_GRANTED
-                            if (hasPermission) {
-                                runLocationVerification()
-                            } else {
-                                permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                            }
-                        },
+                        onClick = { begin() },
                         testTag = "location_gate_retry_btn"
                     )
                 } else {
                     MarryPrimaryButton(
                         text = Localization.t("location_gate_button", lang),
-                        onClick = {
-                            val hasPermission = ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.ACCESS_FINE_LOCATION
-                            ) == PackageManager.PERMISSION_GRANTED
-                            if (hasPermission) {
-                                runLocationVerification()
-                            } else {
-                                permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                            }
-                        },
+                        onClick = { begin() },
                         enabled = !isChecking,
                         testTag = "location_gate_verify_btn"
                     )

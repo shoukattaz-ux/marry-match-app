@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -139,7 +140,14 @@ fun AdminPanelScreen(
                 state.doneKey?.let { MessageBar(Localization.t(it, lang), error = false, onClose = adminVm::clearMessages) }
             }
             when (tab) {
-                AdminTab.OVERVIEW -> AdminOverview(state.stats, state.loading, lang, onReload = adminVm::loadStats)
+                AdminTab.OVERVIEW -> AdminOverview(
+                    stats = state.stats,
+                    loading = state.loading,
+                    lang = lang,
+                    onReload = adminVm::loadStats,
+                    locationCheckWorking = state.workingOn == "location_check",
+                    onSetLocationCheck = adminVm::setLocationCheck
+                )
                 AdminTab.SELFIES -> SelfieQueueView(
                     state = queueState,
                     lang = lang,
@@ -173,7 +181,14 @@ private fun MessageBar(text: String, error: Boolean, onClose: () -> Unit) {
 }
 
 @Composable
-private fun AdminOverview(stats: AdminStats?, loading: Boolean, lang: AppLanguage, onReload: () -> Unit) {
+private fun AdminOverview(
+    stats: AdminStats?,
+    loading: Boolean,
+    lang: AppLanguage,
+    onReload: () -> Unit,
+    locationCheckWorking: Boolean,
+    onSetLocationCheck: (Boolean) -> Unit
+) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -184,6 +199,14 @@ private fun AdminOverview(stats: AdminStats?, loading: Boolean, lang: AppLanguag
         if (stats == null) {
             item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { if (loading) CircularProgressIndicator() } }
         } else {
+            item {
+                LocationCheckCard(
+                    enabled = stats.locationCheck,
+                    working = locationCheckWorking,
+                    lang = lang,
+                    onChange = onSetLocationCheck
+                )
+            }
             val rows = listOf(
                 listOf("admin_stat_users" to stats.usersTotal, "admin_stat_new_today" to stats.newToday),
                 listOf("admin_stat_active" to stats.active7d, "admin_stat_profiles" to stats.profilesDone),
@@ -214,6 +237,52 @@ private fun AdminOverview(stats: AdminStats?, loading: Boolean, lang: AppLanguag
                 }
             }
         }
+    }
+}
+
+/**
+ * Switch for the Germany location check at sign-up. On by default. Switching it off (for testing
+ * or a launch in another country) asks for confirmation; while it is off a warning stays visible.
+ */
+@Composable
+private fun LocationCheckCard(enabled: Boolean, working: Boolean, lang: AppLanguage, onChange: (Boolean) -> Unit) {
+    var confirmOff by remember { mutableStateOf(false) }
+    val t: (String) -> String = { Localization.t(it, lang) }
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (enabled) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.errorContainer
+        ),
+        modifier = Modifier.fillMaxWidth().testTag("location_check_card")
+    ) {
+        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(t("admin_location_title"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    t(if (enabled) "admin_location_on_desc" else "admin_location_off_desc"),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = { on -> if (on) onChange(true) else confirmOff = true },
+                enabled = !working,
+                modifier = Modifier.testTag("location_check_switch")
+            )
+        }
+    }
+    if (confirmOff) {
+        AlertDialog(
+            onDismissRequest = { confirmOff = false },
+            title = { Text(t("admin_location_confirm_title")) },
+            text = { Text(t("admin_location_confirm_body")) },
+            confirmButton = {
+                TextButton(onClick = { confirmOff = false; onChange(false) }, modifier = Modifier.testTag("location_check_confirm_off")) {
+                    Text(t("admin_location_confirm_off"), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmOff = false }) { Text(t("cancel")) } }
+        )
     }
 }
 
@@ -616,7 +685,8 @@ private fun AdminLog(entries: List<AuditEntry>, loading: Boolean, lang: AppLangu
                 items(entries, key = { it.id }) { e ->
                     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                         Text(
-                            Localization.t("audit_${e.action}", lang) + " — " + e.targetName.ifBlank { e.targetUser?.take(8) ?: "" },
+                            Localization.t("audit_${e.action}", lang) +
+                                (e.targetName.ifBlank { e.targetUser?.take(8) ?: "" }.takeIf { it.isNotBlank() }?.let { " — $it" } ?: ""),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold
                         )

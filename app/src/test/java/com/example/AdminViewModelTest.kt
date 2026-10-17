@@ -30,8 +30,20 @@ private class FakeAdminApi : AdminApi {
     val users = mutableListOf(AdminUser("bad", "Max"), AdminUser("admin", "Mod", isAdmin = true))
     val calls = mutableListOf<String>()
     var failNext: Throwable? = null
+    /** The Germany location check switch; on by default like on the server. */
+    var locationCheck = true
+    var switchCalls = 0
 
-    override suspend fun stats() = AdminStats(openReports = reports.count { it.status == "open" }, banned = users.count { it.isBanned })
+    override suspend fun stats() = AdminStats(
+        openReports = reports.count { it.status == "open" },
+        banned = users.count { it.isBanned },
+        locationCheck = locationCheck
+    )
+    override suspend fun setLocationCheck(enabled: Boolean) {
+        failNext?.let { failNext = null; throw it }
+        switchCalls++
+        locationCheck = enabled
+    }
     override suspend fun reports(status: String) = reports.filter { it.status == status }
     override suspend fun searchUsers(query: String) = users.filter { query.isBlank() || it.displayName.contains(query, true) }
     override suspend fun auditLog(limit: Int) = listOf(AuditEntry(1, action = "user_ban"))
@@ -145,5 +157,35 @@ class AdminViewModelTest {
     fun noServiceShowsLoadError() {
         val vm = AdminViewModel(null)
         assertEquals("admin_load_failed", vm.state.value.errorKey)
+    }
+
+    @Test
+    fun locationCheckIsOnByDefault() {
+        val vm = AdminViewModel(FakeAdminApi())
+        assertEquals(true, vm.state.value.stats?.locationCheck)
+    }
+
+    @Test
+    fun switchingTheLocationCheckOffAndOnUpdatesTheOverview() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        vm.setLocationCheck(false)
+        assertEquals(false, vm.state.value.stats?.locationCheck)
+        assertEquals("admin_done_location_off", vm.state.value.doneKey)
+        assertNull(vm.state.value.workingOn)
+
+        vm.setLocationCheck(true)
+        assertEquals(true, vm.state.value.stats?.locationCheck)
+        assertEquals("admin_done_location_on", vm.state.value.doneKey)
+        assertEquals(2, api.switchCalls)
+    }
+
+    @Test
+    fun aRefusedSwitchChangeKeepsTheCheckOnAndShowsAnError() {
+        val api = FakeAdminApi().apply { failNext = IllegalStateException("not_allowed") }
+        val vm = AdminViewModel(api)
+        vm.setLocationCheck(false)
+        assertEquals("admin_action_failed", vm.state.value.errorKey)
+        assertEquals(true, vm.state.value.stats?.locationCheck)
     }
 }
