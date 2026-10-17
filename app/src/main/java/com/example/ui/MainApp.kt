@@ -21,7 +21,9 @@ import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
 import com.example.core.AppLanguage
 import com.example.core.Localization
@@ -72,6 +74,10 @@ fun MainApp(
     var reportUserTarget by remember { mutableStateOf<UserProfile?>(null) }
 
     when (authState) {
+        AuthState.LOADING -> {
+            // The saved login is still loading: never show Welcome before we know.
+            StartupLoadingScreen(appName = Localization.t("app_name", lang))
+        }
         AuthState.WELCOME -> {
             WelcomeScreen(repository = repository)
         }
@@ -330,6 +336,28 @@ private fun AskForNotificationPermission() {
         if (!asked && !PushNotifications.canNotify(context)) {
             asked = true
             launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+}
+
+/** Logo and a progress indicator while the saved login is loaded at app start. */
+@Composable
+private fun StartupLoadingScreen(appName: String) {
+    Box(
+        modifier = Modifier.fillMaxSize().testTag("startup_loading"),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Filled.Favorite,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(72.dp)
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(appName, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(24.dp))
+            CircularProgressIndicator()
         }
     }
 }

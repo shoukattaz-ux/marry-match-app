@@ -3,6 +3,7 @@ package com.example
 import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.imageLoader
 import com.example.core.PhotoCache
 import com.example.data.MarryMatchRepository
 import com.example.push.PushNotifications
@@ -19,6 +20,18 @@ class MarryMatchApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         PushNotifications.createChannel(this)
+        repository.onSignedOut = ::clearAccountCaches
+    }
+
+    /** After Log Out: no photos of the old account stay cached, and its chat transfers stop. */
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
+    private fun clearAccountCaches() {
+        imageLoader.memoryCache?.clear()
+        imageLoader.diskCache?.clear()
+        val work = androidx.work.WorkManager.getInstance(this)
+        work.cancelAllWorkByTag(com.example.data.media.MediaWork.TAG_SEND)
+        work.cancelAllWorkByTag(com.example.data.media.MediaWork.TAG_DOWNLOAD)
+        com.example.data.media.MediaFiles.outboxRoot(this).deleteRecursively()
     }
 
     /**

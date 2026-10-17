@@ -13,6 +13,7 @@ import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
@@ -25,6 +26,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
@@ -35,6 +38,8 @@ import kotlinx.serialization.json.put
 import java.util.UUID
 
 enum class AuthState {
+    /** App start: the saved login is being loaded. Shows a loading screen, never the Welcome screen. */
+    LOADING,
     WELCOME,
     SIGNUP,
     LOGIN,
@@ -104,8 +109,8 @@ class MarryMatchRepository {
     private val _appLanguage = MutableStateFlow(AppLanguage.EN)
     val appLanguage: StateFlow<AppLanguage> = _appLanguage.asStateFlow()
 
-    // App must start at Welcome screen, or Home (LOGGED_IN) if a real session exists
-    private val _authState = MutableStateFlow(AuthState.WELCOME)
+    // Starts as LOADING; the Supabase session status decides where to go (see watchSession).
+    private val _authState = MutableStateFlow(AuthState.LOADING)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     private val _isPostLoginLocationGate = MutableStateFlow(false)
@@ -159,6 +164,12 @@ class MarryMatchRepository {
     private var _account: AccountApi? = null
     val account: AccountApi? get() = _account
 
+    // The account the app has been opened for, so a token refresh does not route again.
+    // Declared before init: the session watcher started there uses them.
+    private val routeMutex = Mutex()
+    private var routedUserId: String? = null
+    private var lastRouteOk = true
+
     init {
         initializeSupabase()
     }
@@ -172,7 +183,13 @@ class MarryMatchRepository {
                     supabaseUrl = AppConfig.SUPABASE_URL,
                     supabaseKey = AppConfig.SUPABASE_ANON_KEY
                 ) {
-                    install(Auth)
+                    install(Auth) {
+                        // The login is saved on the phone (app-private storage, excluded from backups)
+                        // and loaded again on the next start; the access token is renewed automatically.
+                        autoLoadFromStorage = true
+                        autoSaveToStorage = true
+                        alwaysAutoRefresh = true
+                    }
                     install(Postgrest)
                     install(Storage)
                     install(Realtime)
@@ -186,11 +203,10 @@ class MarryMatchRepository {
                 _account = SupabaseAccountService(_supabase!!) { _currentUser.value.id }
                 _chaperone = SupabaseChaperoneService(_supabase!!)
                 _verification = SupabaseVerificationService(_supabase!!, _profileService!!, photoLinks) { _currentUser.value.id }
-                repositoryScope.launch {
-                    checkInitialSession()
-                }
+                watchSession(_supabase!!)
             } catch (e: Throwable) {
                 Log.e("MarryMatchRepository", "Failed to create Supabase client: ${e.message}", e)
+                _authState.value = AuthState.WELCOME
             }
         }
     }
@@ -199,22 +215,59 @@ class MarryMatchRepository {
         initializeSupabase()
     }
 
-    suspend fun checkInitialSession() {
-        val client = _supabase ?: return
-        try {
-            val session = client.auth.currentSessionOrNull()
-            if (session != null && session.user != null) {
-                val user = session.user!!
-                applyAuthUser(user.id, user.email ?: "", user.userMetadata)
-                routeAfterLogin(client, user.id)
-            } else {
-                _authState.value = AuthState.WELCOME
+    /**
+     * Drives login state from Supabase. The saved session is loaded in the background after the
+     * client is created, so the app waits (LOADING) instead of asking too early, which used to
+     * show the Welcome screen to users who were still logged in.
+     */
+    private fun watchSession(client: SupabaseClient) {
+        repositoryScope.launch {
+            client.auth.sessionStatus.collect { status ->
+                try {
+                    onSessionStatus(client, status)
+                } catch (e: Throwable) {
+                    Log.w("MarryMatchRepository", "Session status handling failed: ${e.message}")
+                }
             }
-        } catch (e: Throwable) {
-            Log.w("MarryMatchRepository", "Session restoration check failed: ${e.message}")
-            _authState.value = AuthState.WELCOME
         }
     }
+
+    private suspend fun onSessionStatus(client: SupabaseClient, status: SessionStatus) {
+        when (status) {
+            SessionStatus.Initializing -> Unit  // keep showing the loading screen
+            is SessionStatus.Authenticated -> {
+                val user = status.session.user ?: client.auth.sessionManager.loadSession()?.user ?: return
+                enterAs(client, user.id, user.email.orEmpty(), user.userMetadata)
+            }
+            is SessionStatus.RefreshFailure -> {
+                // Offline or server trouble while renewing the token: the saved login stays valid, so
+                // open the app with it. Only a refused refresh token (NotAuthenticated) logs out.
+                val saved = client.auth.sessionManager.loadSession()?.user
+                if (saved != null) {
+                    enterAs(client, saved.id, saved.email.orEmpty(), saved.userMetadata)
+                } else if (_authState.value == AuthState.LOADING) {
+                    _authState.value = AuthState.WELCOME
+                }
+            }
+            is SessionStatus.NotAuthenticated -> {
+                // No saved login, Log Out, or the server refused the refresh token.
+                val wasInside = routedUserId != null || _authState.value in IN_APP_STATES || _isPostLoginLocationGate.value
+                routeMutex.withLock { routedUserId = null }
+                if (wasInside) clearUserData()
+                if (wasInside || _authState.value == AuthState.LOADING) _authState.value = AuthState.WELCOME
+            }
+        }
+    }
+
+    /** Opens the app once per account (login, app start or token refresh all end up here). */
+    private suspend fun enterAs(client: SupabaseClient, id: String, email: String, metadata: JsonObject?): Boolean =
+        routeMutex.withLock {
+            if (routedUserId == id) return@withLock lastRouteOk
+            routedUserId = id
+            applyAuthUser(id, email, metadata)
+            lastRouteOk = routeAfterLogin(client, id)
+            lastRouteOk
+        }
 
     suspend fun signUpWithSupabase(
         email: String,
@@ -562,8 +615,8 @@ class MarryMatchRepository {
             }
             val user = client.auth.currentUserOrNull()
             if (user != null) {
-                applyAuthUser(user.id, user.email ?: email.trim(), user.userMetadata)
-                if (routeAfterLogin(client, user.id)) Result.success(Unit) else Result.failure(AccountBannedException())
+                if (enterAs(client, user.id, user.email ?: email.trim(), user.userMetadata)) Result.success(Unit)
+                else Result.failure(AccountBannedException())
             } else {
                 Result.failure(IllegalStateException("No valid user session returned by Supabase."))
             }
@@ -596,12 +649,26 @@ class MarryMatchRepository {
                 runCatching { _account?.unregisterPushToken(pushToken) }
                 PushNotifications.deleteToken()
             }
+            val auth = _supabase?.auth
             try {
-                _supabase?.auth?.signOut()
+                auth?.signOut()
             } catch (e: Throwable) {
+                // Offline or server error: still remove the saved login from this phone.
                 Log.w("MarryMatchRepository", "Supabase signOut error: ${e.message}")
+                runCatching { auth?.clearSession() }
             }
+            routeMutex.withLock { routedUserId = null }
         }
+        clearUserData()
+        onSignedOut?.invoke()
+        _authState.value = AuthState.WELCOME
+    }
+
+    /** Runs after Log Out; the app clears image caches and pending chat media work (needs a Context). */
+    var onSignedOut: (() -> Unit)? = null
+
+    /** Forgets everything loaded for the signed-in account. */
+    private fun clearUserData() {
         _isPostLoginLocationGate.value = false
         _currentUser.value = createEmptyUser()
         _blockedUserIds.value = emptySet()
@@ -611,7 +678,7 @@ class MarryMatchRepository {
         _selfieStatus.value = SelfieStatus(SelfieStatus.NONE)
         _privacy.value = PrivacySettings()
         _notifications.value = NotificationSettings()
-        _authState.value = AuthState.WELCOME
+        repositoryScope.launch { _photoLinks?.clear() }
     }
 
     fun getCurrentAccessToken(): String? {
@@ -815,6 +882,9 @@ class MarryMatchRepository {
     }
 
     companion object {
+        /** Screens that belong to a signed-in account; a lost session leaves them for Welcome. */
+        private val IN_APP_STATES = setOf(AuthState.LOGGED_IN, AuthState.ONBOARDING, AuthState.CHAPERONE)
+
         // The server accepts a pass for 15 minutes; stop one minute early to allow for clock drift.
         private const val SIGNUP_PASS_MAX_AGE_MS = 14 * 60 * 1000L
 

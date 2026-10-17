@@ -27,13 +27,28 @@ class SupabaseAuthTest {
     @Before
     fun setup() {
         repository = MarryMatchRepository()
+        startState = awaitStartup()
+    }
+
+    /** The state right after the saved login was looked for (none exists in tests). */
+    private var startState: AuthState = AuthState.LOADING
+
+    private fun awaitStartup(): AuthState {
+        val deadline = System.currentTimeMillis() + 10_000
+        while (repository.authState.value == AuthState.LOADING && System.currentTimeMillis() < deadline) {
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+        }
+        return repository.authState.value
     }
 
     @Test
-    fun testAppStartsAtWelcomeScreenWithoutHardcodedDemoUser() {
-        // Requirement 4: App must start at Welcome screen (or home only if session exists)
-        // And initial user state must NOT have isAdmin = true
-        assertEquals("Initial auth state must be WELCOME", AuthState.WELCOME, repository.authState.value)
+    fun testAppStartsLoadingWithoutHardcodedDemoUser() {
+        // The app first waits for the saved login (LOADING); it never starts as logged in.
+        assertTrue(
+            "Start state must be LOADING (or WELCOME once no saved login was found)",
+            repository.authState.value in setOf(AuthState.LOADING, AuthState.WELCOME)
+        )
         val currentUser = repository.currentUser.value
         assertFalse("Initial user must not be an admin", currentUser.isAdmin)
         assertEquals("Initial user must not have prefilled email", "", currentUser.email)
@@ -156,5 +171,11 @@ class SupabaseAuthTest {
         assertFalse(DisposableEmail.isDisposable("anna@gmail.com"))
         assertFalse(DisposableEmail.isDisposable("not-an-email"))
     }
-}
 
+    @Test
+    fun testFreshInstallEndsOnWelcome() {
+        // No saved login on a fresh install: after loading, the Welcome screen shows.
+        assertEquals(AuthState.WELCOME, startState)
+        assertEquals("", repository.currentUser.value.id)
+    }
+}
