@@ -3,6 +3,7 @@ package com.example.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.ChaperoneApi
+import com.example.data.ChaperoneCode
 import com.example.data.ChaperoneInvite
 import com.example.data.MyChaperone
 import com.example.data.Ward
@@ -49,9 +50,11 @@ class ChaperoneViewModel(private val api: ChaperoneApi?, private val hasProfile:
         refresh()
     }
 
-    fun refresh() {
+    /** Reloads from the server; [quiet] (background checks) keeps errors as they are and shows none. */
+    fun refresh(quiet: Boolean = false) {
         val a = api ?: return
-        _state.update { it.copy(loading = true, errorKey = null) }
+        if (_state.value.loading) return
+        _state.update { if (quiet) it.copy(loading = true) else it.copy(loading = true, errorKey = null) }
         viewModelScope.launch {
             try {
                 val mine = if (hasProfile) a.myChaperone() else null
@@ -67,7 +70,7 @@ class ChaperoneViewModel(private val api: ChaperoneApi?, private val hasProfile:
                     )
                 }
             } catch (e: Throwable) {
-                _state.update { it.copy(loading = false, errorKey = ChaperoneApi.errorKey(e)) }
+                _state.update { if (quiet) it.copy(loading = false) else it.copy(loading = false, errorKey = ChaperoneApi.errorKey(e)) }
             }
         }
     }
@@ -101,8 +104,9 @@ class ChaperoneViewModel(private val api: ChaperoneApi?, private val hasProfile:
 
     /** Accepts a code; [onJoined] runs after success (e.g. to leave onboarding). */
     fun accept(code: String, yourName: String, onJoined: () -> Unit = {}) {
-        if (code.isBlank()) {
-            _state.update { it.copy(errorKey = "chaperone_error_invalid_code") }
+        val clean = ChaperoneCode.normalize(code)
+        if (!ChaperoneCode.isComplete(clean)) {
+            _state.update { it.copy(errorKey = "chaperone_error_code_format") }
             return
         }
         if (yourName.isBlank()) {
@@ -110,7 +114,7 @@ class ChaperoneViewModel(private val api: ChaperoneApi?, private val hasProfile:
             return
         }
         act { a ->
-            val member = a.accept(code.trim(), yourName.trim())
+            val member = a.accept(clean, yourName.trim())
             val wards = a.myWards()
             _state.update { it.copy(wards = wards, joinedMember = member) }
             onJoined()

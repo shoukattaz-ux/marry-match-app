@@ -111,10 +111,39 @@ class ChaperoneViewModelTest {
     fun aWrongCodeShowsTheServerReasonAndDoesNotCallBack() {
         val vm = ChaperoneViewModel(FakeChaperoneApi(), hasProfile = false)
         var joined = false
-        vm.accept("WRONG123", "Uncle Ahmed") { joined = true }
+        vm.accept("WXYZ-2345", "Uncle Ahmed") { joined = true }
         assertFalse(joined)
         assertEquals("chaperone_error_invalid_code", vm.state.value.errorKey)
         assertFalse(vm.state.value.busy)
+    }
+
+    @Test
+    fun aMistypedCodeIsCaughtBeforeAskingTheServer() {
+        val api = FakeChaperoneApi()
+        val vm = ChaperoneViewModel(api, hasProfile = false)
+        vm.accept("ABCD-234", "Uncle Ahmed")
+        assertEquals("chaperone_error_code_format", vm.state.value.errorKey)
+        vm.accept("ABCD-0345", "Uncle Ahmed")
+        assertEquals("chaperone_error_code_format", vm.state.value.errorKey)
+        assertTrue(api.validCodes.containsKey("ABCD2345"))
+    }
+
+    @Test
+    fun aPastedInvitationMessageWorks() {
+        val api = FakeChaperoneApi()
+        val vm = ChaperoneViewModel(api, hasProfile = false)
+        var joined = false
+        vm.accept("I'd like you to be my chaperone. Enter this code within 48 hours: ABCD-2345", "Mama") { joined = true }
+        assertTrue(joined)
+    }
+
+    @Test
+    fun aQuietRefreshKeepsTheMessageOnScreen() {
+        val api = FakeChaperoneApi()
+        val vm = ChaperoneViewModel(api, hasProfile = true)
+        vm.accept("ABCD-234", "Mama")
+        vm.refresh(quiet = true)
+        assertEquals("chaperone_error_code_format", vm.state.value.errorKey)
     }
 
     @Test

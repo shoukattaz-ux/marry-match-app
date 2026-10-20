@@ -436,7 +436,8 @@ class MarryMatchRepository {
             _authState.value = AuthState.LOGGED_IN
             return
         }
-        if (profile == null && isChaperoneOnly()) {
+        // A family member may have started their own profile before entering a code.
+        if ((profile == null || !profile.row.onboardingDone) && isChaperoneOnly()) {
             _authState.value = AuthState.CHAPERONE
         } else if (profile == null || !profile.row.onboardingDone) {
             _authState.value = AuthState.ONBOARDING

@@ -27,7 +27,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,11 +38,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.core.AppLanguage
 import com.example.core.Localization
+import com.example.data.ChaperoneCode
 import com.example.data.ChatTime
 import com.example.data.MarryMatchRepository
 import com.example.data.Ward
 import com.example.ui.theme.extendedColors
 import com.example.ui.viewmodel.ChaperoneViewModel
+import kotlinx.coroutines.delay
 
 /**
  * Chaperone mode. A member invites a family member with a one-time code and can remove them at
@@ -82,6 +87,16 @@ fun ChaperoneScreen(
             vm.clearJoined()
         }
     }
+    // Fresh state each time the screen opens (the view model outlives the screen).
+    LaunchedEffect(Unit) { vm.refresh() }
+    // While a code is waiting to be used, check now and then so the member sees the chaperone join.
+    val waitingForChaperone = state.mine?.let { !it.isActive } == true
+    LaunchedEffect(waitingForChaperone) {
+        while (waitingForChaperone) {
+            delay(10_000)
+            vm.refresh(quiet = true)
+        }
+    }
     // A chaperone-only account that no longer reads along for anyone goes back to sign-up.
     LaunchedEffect(chaperoneOnly, state.loaded, state.wards.isEmpty()) {
         if (chaperoneOnly && state.loaded && state.wards.isEmpty()) {
@@ -116,7 +131,7 @@ fun ChaperoneScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = vm::refresh) { Icon(Icons.Default.Refresh, contentDescription = t("chaperone_refresh")) }
+                    IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, contentDescription = t("chaperone_refresh")) }
                     if (chaperoneOnly) {
                         TextButton(onClick = { repository.toggleLanguage() }) {
                             Text(if (lang == AppLanguage.EN) "DE" else "EN", fontWeight = FontWeight.Bold)
@@ -356,7 +371,9 @@ fun AcceptChaperoneCodeDialog(
     onAccept: (String, String) -> Unit
 ) {
     val t: (String) -> String = { Localization.t(it, lang) }
-    var code by remember { mutableStateOf("") }
+    // Kept tidy while typing or pasting: "abcd ef23" becomes "ABCD-EF23", cursor at the end.
+    var codeField by remember { mutableStateOf(TextFieldValue("")) }
+    val code = ChaperoneCode.normalize(codeField.text)
     var name by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -365,11 +382,24 @@ fun AcceptChaperoneCodeDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(t("chaperone_enter_code_desc"), style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it.take(12) },
+                    value = codeField,
+                    onValueChange = { v ->
+                        val shown = ChaperoneCode.format(ChaperoneCode.normalize(v.text))
+                        codeField = TextFieldValue(shown, selection = TextRange(shown.length))
+                    },
                     label = { Text(t("chaperone_code_field")) },
+                    placeholder = { Text("ABCD-EF23", fontFamily = FontFamily.Monospace) },
+                    supportingText = {
+                        Text(
+                            if (ChaperoneCode.hasLookAlike(code)) t("chaperone_code_lookalike")
+                            else String.format(t("chaperone_code_count"), code.length, ChaperoneCode.LENGTH),
+                            color = if (ChaperoneCode.hasLookAlike(code)) MaterialTheme.colorScheme.error else MaterialTheme.extendedColors.muted
+                        )
+                    },
+                    isError = ChaperoneCode.hasLookAlike(code),
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                    textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, letterSpacing = 2.sp),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, keyboardType = KeyboardType.Ascii),
                     modifier = Modifier.fillMaxWidth().testTag("chaperone_code_field")
                 )
                 OutlinedTextField(
@@ -386,7 +416,7 @@ fun AcceptChaperoneCodeDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onAccept(code, name) }, enabled = !busy && code.isNotBlank() && name.isNotBlank()) {
+            TextButton(onClick = { onAccept(code, name) }, enabled = !busy && ChaperoneCode.isComplete(code) && name.isNotBlank()) {
                 Text(t("chaperone_join"))
             }
         },
