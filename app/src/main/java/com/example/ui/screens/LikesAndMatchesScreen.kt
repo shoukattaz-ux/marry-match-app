@@ -38,6 +38,7 @@ import com.example.data.MarryMatchRepository
 import com.example.model.MatchItem
 import com.example.model.UserProfile
 import com.example.ui.components.ActivityLabel
+import com.example.ui.components.FocusedPhoto
 import com.example.ui.components.MarryPrimaryButton
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.extendedColors
@@ -201,10 +202,10 @@ fun MatchRow(
                     .size(64.dp)
                     .clip(CircleShape)
             ) {
-                AsyncImage(
+                FocusedPhoto(
                     model = match.matchedUser.photos.firstOrNull() ?: "",
+                    focus = match.matchedUser.mainPhotoFocus,
                     contentDescription = match.matchedUser.displayName,
-                    contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
             }

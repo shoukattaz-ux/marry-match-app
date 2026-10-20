@@ -1,6 +1,7 @@
 package com.example.data
 
 import com.example.core.PhotoProcessor
+import com.example.model.PhotoFocus
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
@@ -41,8 +42,13 @@ data class ProfileRow(
 private data class PhotoRow(
     val id: String,
     @SerialName("storage_path") val storagePath: String,
-    val position: Int
-)
+    val position: Int,
+    @SerialName("focus_x") val focusX: Float = 0f,
+    @SerialName("focus_y") val focusY: Float = 0f,
+    val zoom: Float = 1f
+) {
+    val focus get() = PhotoFocus(focusX, focusY, zoom)
+}
 
 @Serializable
 private data class PromptRow(
@@ -51,7 +57,14 @@ private data class PromptRow(
 )
 
 /** A stored profile photo; [url] is the public address used to show it. */
-data class ProfilePhoto(val id: String, val storagePath: String, val url: String, val position: Int)
+data class ProfilePhoto(
+    val id: String,
+    val storagePath: String,
+    val url: String,
+    val position: Int,
+    /** How the round avatar shows this photo when it is the main one. */
+    val focus: PhotoFocus = PhotoFocus()
+)
 
 data class PromptAnswer(val key: String, val answer: String)
 
@@ -81,15 +94,25 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
 
     suspend fun loadPhotos(userId: String): List<ProfilePhoto> =
         client.from("profile_photos")
-            .select(columns = Columns.list("id", "storage_path", "position")) {
+            .select(columns = Columns.list("id", "storage_path", "position", "focus_x", "focus_y", "zoom")) {
                 filter { eq("user_id", userId) }
                 order("position", Order.ASCENDING)
             }
             .decodeList<PhotoRow>()
             .let { rows ->
                 photoLinks.urls(rows.map { it.storagePath })  // one request for all, then served from the cache
-                rows.map { ProfilePhoto(it.id, it.storagePath, photoLinks.url(it.storagePath).orEmpty(), it.position) }
+                rows.map { ProfilePhoto(it.id, it.storagePath, photoLinks.url(it.storagePath).orEmpty(), it.position, it.focus) }
             }
+
+    /** Saves how the round avatar shows this photo ("Adjust photo"). */
+    suspend fun savePhotoFocus(photoId: String, focus: PhotoFocus) {
+        val f = focus.clamped()
+        client.from("profile_photos").update(buildJsonObject {
+            put("focus_x", f.x)
+            put("focus_y", f.y)
+            put("zoom", f.zoom)
+        }) { filter { eq("id", photoId) } }
+    }
 
     private suspend fun loadPrompts(userId: String): List<PromptAnswer> =
         client.from("profile_prompts")

@@ -38,6 +38,9 @@ import com.example.core.AppConfig
 import com.example.core.AppLanguage
 import com.example.core.Localization
 import com.example.core.ProfileStrength
+import kotlinx.coroutines.launch
+import com.example.ui.components.AvatarAdjustDialog
+import com.example.ui.components.FocusedPhoto
 import com.example.data.MarryMatchRepository
 import com.example.data.SelfieStatus
 import com.example.ui.components.*
@@ -60,6 +63,32 @@ fun ProfileScreen(
     LaunchedEffect(user.id) { if (user.id.isNotBlank()) repository.loadSelfieStatus() }
 
     var showPhoneFlow by remember { mutableStateOf(false) }
+    var showAdjustPhoto by remember { mutableStateOf(false) }
+    var adjustSaving by remember { mutableStateOf(false) }
+    var adjustError by remember { mutableStateOf<String?>(null) }
+    val adjustScope = rememberCoroutineScope()
+
+    if (showAdjustPhoto) {
+        AvatarAdjustDialog(
+            photo = user.photos.firstOrNull(),
+            initial = user.mainPhotoFocus,
+            lang = lang,
+            saving = adjustSaving,
+            errorText = adjustError,
+            onDismiss = { showAdjustPhoto = false; adjustError = null },
+            onSave = { focus ->
+                adjustSaving = true
+                adjustError = null
+                adjustScope.launch {
+                    repository.saveMainPhotoFocus(focus)
+                        .onSuccess { showAdjustPhoto = false }
+                        .onFailure { adjustError = Localization.t("avatar_save_failed", lang) }
+                    adjustSaving = false
+                }
+            },
+            onChangePhotos = { showAdjustPhoto = false; onOpenProfileCreation() }
+        )
+    }
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -104,18 +133,42 @@ fun ProfileScreen(
                     modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    // Tap the photo to adjust how it sits in the circle (or to add photos).
                     Box(
                         modifier = Modifier
                             .size(100.dp)
-                            .clip(CircleShape)
-                            .border(3.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                            .clickable {
+                                if (user.photos.isNotEmpty()) showAdjustPhoto = true else onOpenProfileCreation()
+                            }
+                            .testTag("profile_avatar")
                     ) {
-                        AsyncImage(
-                            model = user.photos.firstOrNull() ?: "",
-                            contentDescription = user.displayName,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
+                                .border(3.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                        ) {
+                            FocusedPhoto(
+                                model = user.photos.firstOrNull() ?: "",
+                                focus = user.mainPhotoFocus,
+                                contentDescription = user.displayName,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.align(Alignment.BottomEnd).size(28.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = Localization.t("avatar_adjust_title", lang),
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))

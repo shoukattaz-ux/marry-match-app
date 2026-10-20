@@ -1,5 +1,6 @@
 package com.example.data
 
+import com.example.model.PhotoFocus
 import com.example.model.ProfilePrompt
 import com.example.model.PromptCatalog
 import com.example.model.UserProfile
@@ -126,6 +127,7 @@ private data class MatchDto(
     val age: Int = 0,
     val city: String? = null,
     val photo: String? = null,
+    @SerialName("photo_focus") val photoFocus: PhotoFocus? = null,
     @SerialName("selfie_verified") val selfieVerified: Boolean = false,
     @SerialName("phone_verified") val phoneVerified: Boolean = false,
     val active: String? = null,
@@ -205,7 +207,8 @@ class SupabaseDiscoveryService(
                     phoneVerified = m.phoneVerified,
                     activity = m.active.orEmpty(),
                     languages = emptyList(),
-                    interests = emptyList()
+                    interests = emptyList(),
+                    mainPhotoFocus = m.photoFocus ?: PhotoFocus()
                 ),
                 lastMessage = m.lastMessage,
                 lastMessageType = m.lastMessageType,

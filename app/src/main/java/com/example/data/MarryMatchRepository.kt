@@ -579,6 +579,22 @@ class MarryMatchRepository {
     }
 
     /** Reloads the profile in the background (steps saved before closing the editor show up). */
+    /** "Adjust photo": shows the new framing at once and saves it with the main photo. */
+    suspend fun saveMainPhotoFocus(focus: com.example.model.PhotoFocus): Result<Unit> {
+        val service = _profileService ?: return Result.failure(IllegalStateException("Supabase is not configured."))
+        val before = _currentUser.value
+        val photoId = before.photoIds.firstOrNull() ?: return Result.failure(IllegalStateException("No photo"))
+        val clamped = focus.clamped()
+        _currentUser.value = before.copy(mainPhotoFocus = clamped)
+        return try {
+            service.savePhotoFocus(photoId, clamped)
+            Result.success(Unit)
+        } catch (e: Throwable) {
+            _currentUser.value = _currentUser.value.copy(mainPhotoFocus = before.mainPhotoFocus)
+            Result.failure(e)
+        }
+    }
+
     fun refreshMyProfile() {
         repositoryScope.launch { reloadMyProfile() }
     }
@@ -612,6 +628,8 @@ class MarryMatchRepository {
             heightCm = row.heightCm ?: 0,
             onboardingDone = row.onboardingDone,
             photos = profile.photos.map { it.url },
+            photoIds = profile.photos.map { it.id },
+            mainPhotoFocus = profile.photos.firstOrNull()?.focus ?: com.example.model.PhotoFocus(),
             prompts = profile.prompts.map { answer ->
                 val question = PromptCatalog.find(answer.key)
                 ProfilePrompt(

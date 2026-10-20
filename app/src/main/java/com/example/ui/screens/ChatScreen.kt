@@ -55,6 +55,7 @@ import com.example.ui.chat.rememberChatMediaUi
 import com.example.model.ChatMessage
 import com.example.model.MatchItem
 import com.example.ui.components.ChatPeerStatus
+import com.example.ui.components.FocusedPhoto
 import com.example.ui.components.SafetyNoticeBanner
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.extendedColors
@@ -142,10 +143,10 @@ fun ChatScreen(
                                 .size(42.dp)
                                 .clip(CircleShape)
                         ) {
-                            AsyncImage(
+                            FocusedPhoto(
                                 model = match.matchedUser.photos.firstOrNull() ?: "",
+                                focus = match.matchedUser.mainPhotoFocus,
                                 contentDescription = match.matchedUser.displayName,
-                                contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
                         }

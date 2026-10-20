@@ -48,7 +48,9 @@ data class UserProfile(
     /** [photos] are blurred copies: this member shows clear photos only to matches. */
     val photosBlurred: Boolean = false,
     /** A chaperone (family member) reads this member's chats with matches. */
-    val chaperoned: Boolean = false
+    val chaperoned: Boolean = false,
+    /** How the round avatar shows the main photo (set with "Adjust photo"). */
+    val mainPhotoFocus: PhotoFocus = PhotoFocus()
 )
 
 /** A question users can answer on their profile; [key] is what the database stores. */
