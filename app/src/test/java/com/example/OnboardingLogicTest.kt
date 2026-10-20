@@ -83,4 +83,13 @@ class OnboardingLogicTest {
         assertEquals(listOf(7, 8, 9), listOf(vm.STEP_HABITS, vm.STEP_INTERESTS, vm.STEP_VALUES))
         assertEquals(com.example.core.ProfileStrength.MATCH_DETAILS_STEP, vm.STEP_HABITS)
     }
+
+    @Test
+    fun photoPickerOffersOnlyTheFreePlaces() {
+        val vm = com.example.ui.viewmodel.OnboardingViewModel
+        assertEquals(6, vm.photosStillAllowed(0))
+        assertEquals(3, vm.photosStillAllowed(3))
+        assertEquals(0, vm.photosStillAllowed(6))
+        assertEquals(0, vm.photosStillAllowed(7))
+    }
 }

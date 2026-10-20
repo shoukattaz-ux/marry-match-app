@@ -534,9 +534,15 @@ private fun ReligionStep(state: OnboardingState, vm: OnboardingViewModel, t: (St
 @Composable
 private fun PhotosStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
     val context = LocalContext.current
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+    // Several photos at once, up to the free places; the multi-picker needs room for at least 2.
+    val free = OnboardingViewModel.photosStillAllowed(state.photos.size)
+    val singlePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) vm.addPhoto(context, uri)
     }
+    val multiPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(maxItems = maxOf(free, 2))
+    ) { uris -> vm.addPhotos(context, uris) }
+    val pickRequest = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
     StepTitle(t("step_photos"), t("step_photos_desc"))
     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         itemsIndexed(state.photos, key = { _, p -> p.id }) { index, photo ->
@@ -589,8 +595,8 @@ private fun PhotosStep(state: OnboardingState, vm: OnboardingViewModel, t: (Stri
     if (state.photoBusy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
     MarrySecondaryButton(
         text = t("add_photo"),
-        onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-        enabled = !state.photoBusy && state.photos.size < 6,
+        onClick = { if (free >= 2) multiPicker.launch(pickRequest) else singlePicker.launch(pickRequest) },
+        enabled = !state.photoBusy && free > 0,
         leadingIcon = Icons.Default.Add,
         testTag = "onboarding_add_photo_btn"
     )

@@ -314,9 +314,16 @@ class OnboardingViewModel(
         }
     }
 
-    fun addPhoto(context: Context, uri: Uri) {
-        val s = _state.value
-        if (s.photos.size >= ProfileService.MAX_PHOTOS) {
+    fun addPhoto(context: Context, uri: Uri) = addPhotos(context, listOf(uri))
+
+    /**
+     * Uploads the photos picked in one go, in the order picked, up to the 6-photo limit. One that
+     * fails is skipped and the rest still upload; the first problem is shown afterwards.
+     */
+    fun addPhotos(context: Context, uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        val free = photosStillAllowed(_state.value.photos.size)
+        if (free == 0) {
             _state.update { it.copy(errorKey = "photo_limit") }
             return
         }
@@ -324,25 +331,25 @@ class OnboardingViewModel(
         val userId = repository.currentUser.value.id
         _state.update { it.copy(photoBusy = true, errorKey = null) }
         viewModelScope.launch {
-            try {
-                val prepared = PhotoProcessor.prepare(context.applicationContext, uri, withThumbnail = true)
-                val becomesMain = _state.value.photos.isEmpty()
-                val faceError = if (becomesMain) faceErrorKey(prepared.faceCount) else null
-                if (faceError != null) {
-                    _state.update { it.copy(photoBusy = false, errorKey = faceError) }
-                    return@launch
+            var firstError: String? = if (uris.size > free) "photo_limit" else null
+            for (uri in uris.take(free)) {
+                val error = try {
+                    val prepared = PhotoProcessor.prepare(context.applicationContext, uri, withThumbnail = true)
+                    // The first photo becomes the main one, which must show exactly one face.
+                    val faceError = if (_state.value.photos.isEmpty()) faceErrorKey(prepared.faceCount) else null
+                    if (faceError == null) {
+                        val photo = service.uploadPhoto(userId, prepared.jpeg, _state.value.photos.size, prepared.thumb, prepared.blurred)
+                        _state.update {
+                            it.copy(photos = it.photos + photo, faceCounts = it.faceCounts + (photo.id to prepared.faceCount))
+                        }
+                    }
+                    faceError
+                } catch (e: Throwable) {
+                    "photo_failed"
                 }
-                val photo = service.uploadPhoto(userId, prepared.jpeg, _state.value.photos.size, prepared.thumb, prepared.blurred)
-                _state.update {
-                    it.copy(
-                        photoBusy = false,
-                        photos = it.photos + photo,
-                        faceCounts = it.faceCounts + (photo.id to prepared.faceCount)
-                    )
-                }
-            } catch (e: Throwable) {
-                _state.update { it.copy(photoBusy = false, errorKey = "photo_failed") }
+                if (firstError == null) firstError = error
             }
+            _state.update { it.copy(photoBusy = false, errorKey = firstError) }
         }
     }
 
@@ -417,6 +424,9 @@ class OnboardingViewModel(
         const val STEP_HABITS = 7
         const val STEP_INTERESTS = 8
         const val STEP_VALUES = 9
+
+        /** How many more photos fit, 0..6. */
+        fun photosStillAllowed(current: Int): Int = (ProfileService.MAX_PHOTOS - current).coerceIn(0, ProfileService.MAX_PHOTOS)
 
         fun missingAnswers(s: OnboardingState, traits: List<Trait>): Boolean =
             traits.any { s.traits[it.key] !in it.options }
