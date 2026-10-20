@@ -307,6 +307,9 @@ private fun GenderStep(state: OnboardingState, vm: OnboardingViewModel, t: (Stri
             ChoiceChip(label = t(g), selected = state.gender == g) { vm.chooseGender(g) }
         }
     }
+    if (state.malePaused) {
+        MaleSignupsPausedNotice(t = t)
+    }
     Text(t("looking_for"), style = MaterialTheme.typography.labelLarge)
     // A man only sees "Woman", a woman only "Man"; nothing is shown before "I am a" is chosen.
     val options = OnboardingViewModel.lookingForOptions(state.gender)

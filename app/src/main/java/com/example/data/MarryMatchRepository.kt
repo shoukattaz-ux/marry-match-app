@@ -18,6 +18,7 @@ import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.storage.Storage
@@ -32,6 +33,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -55,6 +57,9 @@ enum class AuthState {
 
 /** Sign-up needs a fresh pass from the location check; the user must verify their location again. */
 class SignupPassRequiredException : IllegalStateException("A fresh location check is required before sign-up.")
+
+/** New accounts from men are paused by an admin to keep the balance (Admin > Gender balance). */
+class MaleSignupsPausedException : IllegalStateException("male_signups_paused")
 
 @Serializable
 private data class UserStatusRow(
@@ -274,11 +279,28 @@ class MarryMatchRepository {
             lastRouteOk
         }
 
+    /**
+     * Whether new accounts from men are accepted right now (works signed out). A network problem
+     * counts as "open": the server still refuses a man's sign-up while paused.
+     */
+    suspend fun maleSignupsOpen(): Boolean {
+        val client = _supabase ?: return true
+        return try {
+            client.postgrest.rpc("signup_status").decodeAs<JsonObject>()["male_signups_open"]
+                ?.jsonPrimitive?.booleanOrNull ?: true
+        } catch (e: Throwable) {
+            Log.w("MarryMatchRepository", "Could not read sign-up status: ${e.message}")
+            true
+        }
+    }
+
     suspend fun signUpWithSupabase(
         email: String,
         password: String,
         birthDate: String,
-        age: Int
+        age: Int,
+        /** "man" or "woman" from the sign-up screen; the profile later starts with it. */
+        gender: String = ""
     ): Result<Unit> {
         // The location pass is checked first: without it there is nothing to send to the server.
         val pass = signupPass
@@ -298,6 +320,7 @@ class MarryMatchRepository {
                 data = buildJsonObject {
                     put("signup_pass", pass)
                     put("birth_date", birthDate)
+                    if (gender.isNotBlank()) put("gender", gender)
                     put("terms_version", AppConfig.TERMS_VERSION)
                     put("privacy_version", AppConfig.PRIVACY_VERSION)
                     put("conduct_version", AppConfig.CONDUCT_VERSION)
@@ -322,7 +345,11 @@ class MarryMatchRepository {
             // A refusal by the sign-up trigger arrives as a generic database error. The app already
             // checked age, email domain and consents, so the likely cause is the pass: ask for a new one.
             val msg = e.message.orEmpty().lowercase()
-            if (msg.contains("database error saving new user") || msg.contains("unexpected_failure")) {
+            val refused = msg.contains("database error saving new user") || msg.contains("unexpected_failure")
+            if (msg.contains("signup_male_paused") || (refused && gender == "man" && !maleSignupsOpen())) {
+                // Paused while the form was open: the pass was not used up, so it stays valid.
+                Result.failure(MaleSignupsPausedException())
+            } else if (refused) {
                 signupPass = null
                 Result.failure(SignupPassRequiredException())
             } else {
@@ -418,6 +445,8 @@ class MarryMatchRepository {
         _currentUser.value = createEmptyUser().copy(
             id = id,
             email = email,
+            // Chosen on the sign-up screen; empty for accounts made before it was asked there.
+            gender = metadata?.get("gender")?.jsonPrimitive?.contentOrNull?.takeIf { it == "man" || it == "woman" }.orEmpty(),
             displayName = metadata?.get("display_name")?.jsonPrimitive?.contentOrNull.orEmpty(),
             birthDate = birthDate,
             birthYear = birthDate.take(4).toIntOrNull() ?: 0,

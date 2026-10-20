@@ -33,12 +33,20 @@ private class FakeAdminApi : AdminApi {
     /** The Germany location check switch; on by default like on the server. */
     var locationCheck = true
     var switchCalls = 0
+    /** New sign-ups from men; open by default like on the server. */
+    var malePaused = false
 
     override suspend fun stats() = AdminStats(
         openReports = reports.count { it.status == "open" },
         banned = users.count { it.isBanned },
-        locationCheck = locationCheck
+        locationCheck = locationCheck,
+        men = 30, women = 12, men7d = 5, women7d = 2,
+        maleSignupsPaused = malePaused
     )
+    override suspend fun setMaleSignupsPaused(paused: Boolean) {
+        failNext?.let { failNext = null; throw it }
+        malePaused = paused
+    }
     override suspend fun setLocationCheck(enabled: Boolean) {
         failNext?.let { failNext = null; throw it }
         switchCalls++
@@ -187,5 +195,50 @@ class AdminViewModelTest {
         vm.setLocationCheck(false)
         assertEquals("admin_action_failed", vm.state.value.errorKey)
         assertEquals(true, vm.state.value.stats?.locationCheck)
+    }
+
+    @Test
+    fun theOverviewShowsMenAndWomenAndTheBalance() {
+        val stats = AdminViewModel(FakeAdminApi()).state.value.stats!!
+        assertEquals(30, stats.men)
+        assertEquals(12, stats.women)
+        assertEquals(2.5, stats.menPerWoman!!, 0.0001)
+        assertEquals(false, stats.maleSignupsPaused)
+        assertNull(AdminStats(men = 4).menPerWoman)
+    }
+
+    @Test
+    fun pausingAndReopeningMaleSignUpsUpdatesTheOverview() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        vm.setMaleSignupsPaused(true)
+        assertEquals(true, vm.state.value.stats?.maleSignupsPaused)
+        assertEquals("admin_done_male_paused", vm.state.value.doneKey)
+        vm.setMaleSignupsPaused(false)
+        assertEquals(false, vm.state.value.stats?.maleSignupsPaused)
+        assertEquals("admin_done_male_open", vm.state.value.doneKey)
+    }
+
+    @Test
+    fun aRefusedPauseKeepsSignUpsOpen() {
+        val api = FakeAdminApi().apply { failNext = IllegalStateException("not_allowed") }
+        val vm = AdminViewModel(api)
+        vm.setMaleSignupsPaused(true)
+        assertEquals("admin_action_failed", vm.state.value.errorKey)
+        assertEquals(false, vm.state.value.stats?.maleSignupsPaused)
+    }
+
+    @Test
+    fun theBalanceTextsExistInBothLanguages() {
+        listOf(
+            "male_signups_paused_title", "male_signups_paused", "signup_gender_required", "admin_balance_title",
+            "admin_balance_pause_title", "admin_balance_confirm_body", "audit_setting_male_signups_paused",
+            "audit_setting_male_signups_open", "admin_done_male_paused", "admin_done_male_open"
+        ).forEach { key ->
+            for (lang in com.example.core.AppLanguage.entries) {
+                assertTrue("$lang $key", com.example.core.Localization.t(key, lang) != key)
+            }
+        }
+        assertEquals("71% men · 29% women", String.format(com.example.core.Localization.t("admin_balance_share", com.example.core.AppLanguage.EN), 71, 29))
     }
 }

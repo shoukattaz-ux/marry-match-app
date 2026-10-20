@@ -30,6 +30,7 @@ import com.example.core.AppLanguage
 import com.example.core.DisposableEmail
 import com.example.core.Localization
 import com.example.data.AuthState
+import com.example.data.MaleSignupsPausedException
 import com.example.data.MarryMatchRepository
 import com.example.data.SignupPassRequiredException
 import com.example.ui.components.MarryPrimaryButton
@@ -57,6 +58,12 @@ fun SignUpScreen(
     var birthDay by remember { mutableStateOf("") }
     var birthMonth by remember { mutableStateOf("") }
     var birthYear by remember { mutableStateOf("") }
+
+    // "I am a man / woman": asked here so a paused sign-up (gender balance) is known before an account exists.
+    var gender by remember { mutableStateOf("") }
+    var maleSignupsOpen by remember { mutableStateOf(true) }
+    LaunchedEffect(gender) { if (gender == "man") maleSignupsOpen = repository.maleSignupsOpen() }
+    val malePaused = gender == "man" && !maleSignupsOpen
 
     var agreedToTerms by remember { mutableStateOf(false) }
     var legalPage by remember { mutableStateOf<LegalPage?>(null) }
@@ -229,6 +236,20 @@ fun SignUpScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.extendedColors.muted
                 )
+
+                // I am a: man / woman
+                Text(Localization.t("gender", lang), style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("man", "woman").forEach { g ->
+                        ChoiceChip(label = Localization.t(g, lang), selected = gender == g) {
+                            gender = g
+                            errorMessage = null
+                        }
+                    }
+                }
+                if (malePaused) {
+                    MaleSignupsPausedNotice { Localization.t(it, lang) }
+                }
 
                 // Email input
                 OutlinedTextField(
@@ -448,6 +469,15 @@ fun SignUpScreen(
                             return@Button
                         }
 
+                        if (gender.isBlank()) {
+                            errorMessage = Localization.t("signup_gender_required", lang)
+                            return@Button
+                        }
+                        if (malePaused) {
+                            errorMessage = Localization.t("male_signups_paused", lang)
+                            return@Button
+                        }
+
                         if (!agreedToTerms) {
                             errorMessage = if (lang == AppLanguage.EN) "Please agree to the Terms and Privacy Policy." else "Bitte stimmen Sie den AGB und Datenschutzbestimmungen zu."
                             return@Button
@@ -463,7 +493,8 @@ fun SignUpScreen(
                                 email = trimmedEmail,
                                 password = trimmedPassword,
                                 birthDate = formattedBirthDate,
-                                age = exactAge
+                                age = exactAge,
+                                gender = gender
                             )
                             isLoading = false
                             result.fold(
@@ -474,6 +505,10 @@ fun SignUpScreen(
                                 onFailure = { error ->
                                     val lower = (error.message ?: "").lowercase()
                                     errorMessage = when {
+                                        error is MaleSignupsPausedException -> {
+                                            maleSignupsOpen = false
+                                            Localization.t("male_signups_paused", lang)
+                                        }
                                         error is SignupPassRequiredException -> {
                                             needsLocationCheck = true
                                             Localization.t("signup_location_expired", lang)
@@ -490,7 +525,7 @@ fun SignUpScreen(
                             )
                         }
                     },
-                    enabled = !isLoading,
+                    enabled = !isLoading && !malePaused,
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
@@ -554,5 +589,29 @@ internal fun friendlyAuthError(error: Throwable?, lang: AppLanguage, fallbackKey
             lower.contains("sockettimeout") || lower.contains("httprequestexception") ->
             Localization.t("network_error", lang)
         else -> Localization.t(fallbackKey, lang)
+    }
+}
+
+/** Shown to men while new accounts from men are paused (Admin > Gender balance). */
+@Composable
+fun MaleSignupsPausedNotice(modifier: Modifier = Modifier, t: (String) -> String) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        modifier = modifier.fillMaxWidth().testTag("male_signups_paused_notice")
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                t("male_signups_paused_title"),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            Text(
+                t("male_signups_paused"),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+        }
     }
 }

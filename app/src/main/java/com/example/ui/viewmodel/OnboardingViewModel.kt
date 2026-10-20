@@ -48,6 +48,8 @@ data class OnboardingState(
     // Step 2
     val gender: String = "",
     val lookingFor: String = "",
+    /** "Man" was chosen while new accounts from men are paused (Admin > Gender balance). */
+    val malePaused: Boolean = false,
     // Step 3
     val city: String = "",
     val region: String = "",
@@ -108,6 +110,8 @@ class OnboardingViewModel(
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
     private var profileRowExists = false
+    /** Gender already saved on the profile; the pause only stops new men, not existing ones. */
+    private var savedGender = ""
 
     init {
         load()
@@ -126,6 +130,9 @@ class OnboardingViewModel(
                 val profile = service?.loadMyProfile(user.id)
                 profileRowExists = profile != null
                 val row = profile?.row
+                savedGender = row?.gender.orEmpty()
+                // A new account starts with the gender chosen on the sign-up screen.
+                val gender = knownGender(row?.gender ?: user.gender)
                 val birthDate = row?.birthDate ?: user.birthDate
                 _state.update { s ->
                     s.copy(
@@ -134,8 +141,8 @@ class OnboardingViewModel(
                         displayName = row?.displayName ?: user.displayName,
                         birthDate = birthDate,
                         birthDateLocked = birthDate.isNotBlank(),
-                        gender = knownGender(row?.gender),
-                        lookingFor = lookingForAfterGender(knownGender(row?.gender)),
+                        gender = gender,
+                        lookingFor = lookingForAfterGender(gender),
                         city = row?.city.orEmpty(),
                         region = row?.region.orEmpty(),
                         marriageTimeline = row?.marriageTimeline.orEmpty(),
@@ -187,6 +194,10 @@ class OnboardingViewModel(
             } catch (e: MainPhotoException) {
                 _state.update { it.copy(saving = false, errorKey = "photo_main_face") }
             } catch (e: Throwable) {
+                if (e.message.orEmpty().contains("male_signups_paused")) {
+                    _state.update { it.copy(saving = false, malePaused = true, errorKey = "male_signups_paused") }
+                    return@launch
+                }
                 _state.update { it.copy(saving = false, errorKey = "profile_save_failed") }
             }
         }
@@ -199,7 +210,11 @@ class OnboardingViewModel(
             s.age!! < AppConfig.MIN_AGE -> "under_18_blocked"
             else -> null
         }
-        2 -> if (s.gender.isBlank() || s.lookingFor.isBlank()) "gender_required" else null
+        2 -> when {
+            s.gender.isBlank() || s.lookingFor.isBlank() -> "gender_required"
+            s.malePaused -> "male_signups_paused"
+            else -> null
+        }
         3 -> if (s.city.isBlank() || s.region.isBlank()) "city_required" else null
         4 -> if (s.marriageTimeline.isBlank()) "timeline_required" else null
         5 -> if (s.wantsChildren.isBlank() || s.languages.isEmpty()) "children_required" else null
@@ -280,6 +295,7 @@ class OnboardingViewModel(
             }
             service.saveProfile(userId, withProgress, create = !profileRowExists)
             profileRowExists = true
+            if (s.step == 2) savedGender = s.gender
         }
     }
 
@@ -422,8 +438,14 @@ class OnboardingViewModel(
     private fun String?.toJson() = this?.let { JsonPrimitive(it) } ?: JsonNull
 
     /** "I am a ...": a man looks for a woman and a woman for a man (the server sets it the same way). */
-    fun chooseGender(gender: String) = edit {
-        copy(gender = gender, lookingFor = lookingForAfterGender(gender))
+    fun chooseGender(gender: String) {
+        edit { copy(gender = gender, lookingFor = lookingForAfterGender(gender), malePaused = false) }
+        if (gender == "man" && savedGender != "man") {
+            viewModelScope.launch {
+                val open = repository.maleSignupsOpen()
+                _state.update { if (it.gender == "man") it.copy(malePaused = !open) else it }
+            }
+        }
     }
 
     companion object {

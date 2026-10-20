@@ -96,6 +96,12 @@ class AdminViewModel(private val api: AdminApi?) : ViewModel() {
             it.setLocationCheck(enabled)
         }
 
+    /** Pausing new accounts from men: the screen has already asked the admin to confirm. */
+    fun setMaleSignupsPaused(paused: Boolean) =
+        act("male_signups", if (paused) "admin_done_male_paused" else "admin_done_male_open") {
+            it.setMaleSignupsPaused(paused)
+        }
+
     fun clearMessages() = _state.update { it.copy(errorKey = null, doneKey = null) }
 
     /** Runs one moderation action, then reloads what it changed. */

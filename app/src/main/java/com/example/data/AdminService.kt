@@ -36,8 +36,18 @@ data class AdminStats(
     @SerialName("met_couples") val metCouples: Int = 0,
     @SerialName("met_unsafe_30d") val metUnsafe30d: Int = 0,
     /** The Germany location check at sign-up. Off only for testing; on by default (migration 024). */
-    @SerialName("location_check") val locationCheck: Boolean = true
-)
+    @SerialName("location_check") val locationCheck: Boolean = true,
+    /** Profiles by gender, in total and created in the last 7 days (migration 033). */
+    val men: Int = 0,
+    val women: Int = 0,
+    @SerialName("men_7d") val men7d: Int = 0,
+    @SerialName("women_7d") val women7d: Int = 0,
+    /** New accounts from men are paused to keep the balance; existing members are not affected. */
+    @SerialName("male_signups_paused") val maleSignupsPaused: Boolean = false
+) {
+    /** Men per woman, e.g. 2.5; null while there are no women yet. */
+    val menPerWoman: Double? get() = if (women > 0) men.toDouble() / women else null
+}
 
 @Serializable
 data class AdminReport(
@@ -104,6 +114,10 @@ interface AdminApi {
     suspend fun setLocationCheck(enabled: Boolean) {
         throw UnsupportedOperationException("admin_set_location_check")
     }
+    /** Pauses or reopens new accounts from men; admins only, logged by the server. */
+    suspend fun setMaleSignupsPaused(paused: Boolean) {
+        throw UnsupportedOperationException("admin_set_male_signups")
+    }
 }
 
 /** A moderation call refused by the server; [code] is e.g. "report_not_open" or "cannot_moderate_admin". */
@@ -130,6 +144,10 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
 
     override suspend fun setLocationCheck(enabled: Boolean) {
         client.postgrest.rpc("admin_set_location_check", buildJsonObject { put("p_enabled", enabled) })
+    }
+
+    override suspend fun setMaleSignupsPaused(paused: Boolean) {
+        client.postgrest.rpc("admin_set_male_signups", buildJsonObject { put("p_paused", paused) })
     }
 
     override suspend fun moderate(action: ModerationAction, userId: String?, reportId: String?, note: String?) {

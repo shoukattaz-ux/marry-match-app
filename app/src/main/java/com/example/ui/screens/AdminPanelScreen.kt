@@ -146,7 +146,9 @@ fun AdminPanelScreen(
                     lang = lang,
                     onReload = adminVm::loadStats,
                     locationCheckWorking = state.workingOn == "location_check",
-                    onSetLocationCheck = adminVm::setLocationCheck
+                    onSetLocationCheck = adminVm::setLocationCheck,
+                    balanceWorking = state.workingOn == "male_signups",
+                    onSetMaleSignupsPaused = adminVm::setMaleSignupsPaused
                 )
                 AdminTab.SELFIES -> SelfieQueueView(
                     state = queueState,
@@ -187,7 +189,9 @@ private fun AdminOverview(
     lang: AppLanguage,
     onReload: () -> Unit,
     locationCheckWorking: Boolean,
-    onSetLocationCheck: (Boolean) -> Unit
+    onSetLocationCheck: (Boolean) -> Unit,
+    balanceWorking: Boolean,
+    onSetMaleSignupsPaused: (Boolean) -> Unit
 ) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -206,6 +210,9 @@ private fun AdminOverview(
                     lang = lang,
                     onChange = onSetLocationCheck
                 )
+            }
+            item {
+                GenderBalanceCard(stats = stats, working = balanceWorking, lang = lang, onChange = onSetMaleSignupsPaused)
             }
             val rows = listOf(
                 listOf("admin_stat_users" to stats.usersTotal, "admin_stat_new_today" to stats.newToday),
@@ -282,6 +289,81 @@ private fun LocationCheckCard(enabled: Boolean, working: Boolean, lang: AppLangu
                 }
             },
             dismissButton = { TextButton(onClick = { confirmOff = false }) { Text(t("cancel")) } }
+        )
+    }
+}
+
+/**
+ * Gender balance: sign-ups of men and women (in total and this week) and the switch that pauses
+ * new accounts from men. Pausing asks for confirmation; existing members are never affected.
+ */
+@Composable
+private fun GenderBalanceCard(stats: AdminStats, working: Boolean, lang: AppLanguage, onChange: (Boolean) -> Unit) {
+    var confirmPause by remember { mutableStateOf(false) }
+    val t: (String) -> String = { Localization.t(it, lang) }
+    val paused = stats.maleSignupsPaused
+    val total = stats.men + stats.women
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (paused) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant
+        ),
+        modifier = Modifier.fillMaxWidth().testTag("gender_balance_card")
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(t("admin_balance_title"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                AdminStatCard(t("admin_stat_men"), stats.men.toString(), Modifier.weight(1f).testTag("admin_men_count"))
+                AdminStatCard(t("admin_stat_women"), stats.women.toString(), Modifier.weight(1f).testTag("admin_women_count"))
+            }
+            if (total > 0) {
+                // Share of men (blue) and women (rose) among all profiles.
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp))
+                ) {
+                    if (stats.men > 0) Box(Modifier.weight(stats.men.toFloat()).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
+                    if (stats.women > 0) Box(Modifier.weight(stats.women.toFloat()).fillMaxHeight().background(MaterialTheme.colorScheme.tertiary))
+                }
+                Text(
+                    String.format(t("admin_balance_share"), stats.men * 100 / total, stats.women * 100 / total) +
+                        (stats.menPerWoman?.let { " · " + String.format(t("admin_balance_ratio"), it) } ?: ""),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Text(
+                String.format(t("admin_balance_week"), stats.men7d, stats.women7d),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.extendedColors.muted
+            )
+            HorizontalDivider()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(t("admin_balance_pause_title"), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        t(if (paused) "admin_balance_paused_desc" else "admin_balance_open_desc"),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = paused,
+                    onCheckedChange = { on -> if (on) confirmPause = true else onChange(false) },
+                    enabled = !working,
+                    modifier = Modifier.testTag("male_signups_switch")
+                )
+            }
+        }
+    }
+    if (confirmPause) {
+        AlertDialog(
+            onDismissRequest = { confirmPause = false },
+            title = { Text(t("admin_balance_confirm_title")) },
+            text = { Text(t("admin_balance_confirm_body")) },
+            confirmButton = {
+                TextButton(onClick = { confirmPause = false; onChange(true) }, modifier = Modifier.testTag("male_signups_confirm")) {
+                    Text(t("admin_balance_confirm_pause"), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmPause = false }) { Text(t("cancel")) } }
         )
     }
 }
