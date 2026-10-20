@@ -50,4 +50,21 @@ class OnboardingLogicTest {
         val keys = PromptCatalog.all.map { it.key }
         assertEquals(keys.size, keys.toSet().size)
     }
+
+    @Test
+    fun aManOnlySeesWomanAndAWomanOnlyMan() {
+        assertEquals(listOf("woman"), com.example.ui.viewmodel.OnboardingViewModel.lookingForOptions("man"))
+        assertEquals(listOf("man"), com.example.ui.viewmodel.OnboardingViewModel.lookingForOptions("woman"))
+        assertTrue(com.example.ui.viewmodel.OnboardingViewModel.lookingForOptions("").isEmpty())
+    }
+
+    @Test
+    fun choosingAGenderPicksTheMatchingLookingFor() {
+        val vm = com.example.ui.viewmodel.OnboardingViewModel
+        assertEquals("woman", vm.lookingForAfterGender("man", "any"))
+        assertEquals("woman", vm.lookingForAfterGender("man", "man"))
+        assertEquals("man", vm.lookingForAfterGender("woman", ""))
+        assertEquals("any", vm.lookingForAfterGender("other", "any"))
+        assertEquals("", vm.lookingForAfterGender("", "woman"))
+    }
 }

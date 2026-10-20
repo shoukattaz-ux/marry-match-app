@@ -127,7 +127,7 @@ class OnboardingViewModel(
                         birthDate = birthDate,
                         birthDateLocked = birthDate.isNotBlank(),
                         gender = row?.gender.orEmpty(),
-                        lookingFor = row?.lookingFor.orEmpty(),
+                        lookingFor = lookingForAfterGender(row?.gender.orEmpty(), row?.lookingFor.orEmpty()),
                         city = row?.city.orEmpty(),
                         region = row?.region.orEmpty(),
                         marriageTimeline = row?.marriageTimeline.orEmpty(),
@@ -373,8 +373,31 @@ class OnboardingViewModel(
 
     private fun String?.toJson() = this?.let { JsonPrimitive(it) } ?: JsonNull
 
+    /** "I am a ...": a man looks for a woman and a woman for a man (the server sets it the same way). */
+    fun chooseGender(gender: String) = edit {
+        copy(gender = gender, lookingFor = lookingForAfterGender(gender, lookingFor))
+    }
+
     companion object {
         const val TOTAL_STEPS = 10
+
+        /** The "Looking for" choices offered for [gender]; none until a gender is chosen. */
+        fun lookingForOptions(gender: String): List<String> = when (gender) {
+            "man" -> listOf("woman")
+            "woman" -> listOf("man")
+            "" -> emptyList()
+            else -> listOf("woman", "man", "any")
+        }
+
+        /** Picks the only possible choice for a man or a woman; keeps a choice that is still offered. */
+        fun lookingForAfterGender(gender: String, current: String): String {
+            val options = lookingForOptions(gender)
+            return when {
+                options.size == 1 -> options.single()
+                current in options -> current
+                else -> ""
+            }
+        }
         val LANGUAGES = listOf("German", "English", "Turkish", "Arabic", "Polish", "Russian", "French", "Italian", "Spanish")
         val SMOKING = listOf("non_smoker", "occasionally", "smoker")
     }

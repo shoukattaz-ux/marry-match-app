@@ -297,13 +297,19 @@ private fun GenderStep(state: OnboardingState, vm: OnboardingViewModel, t: (Stri
     Text(t("gender"), style = MaterialTheme.typography.labelLarge)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf("woman", "man", "other").forEach { g ->
-            ChoiceChip(label = t(g), selected = state.gender == g) { vm.edit { copy(gender = g) } }
+            ChoiceChip(label = t(g), selected = state.gender == g) { vm.chooseGender(g) }
         }
     }
     Text(t("looking_for"), style = MaterialTheme.typography.labelLarge)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf("woman", "man", "any").forEach { g ->
-            ChoiceChip(label = t(g), selected = state.lookingFor == g) { vm.edit { copy(lookingFor = g) } }
+    // A man only sees "Woman", a woman only "Man"; nothing is shown before "I am a" is chosen.
+    val options = OnboardingViewModel.lookingForOptions(state.gender)
+    if (options.isEmpty()) {
+        Text(t("looking_for_choose_gender"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+    } else {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { g ->
+                ChoiceChip(label = t(g), selected = state.lookingFor == g) { vm.edit { copy(lookingFor = g) } }
+            }
         }
     }
 }
