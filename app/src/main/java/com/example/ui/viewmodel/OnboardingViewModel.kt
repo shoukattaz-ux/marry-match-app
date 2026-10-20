@@ -126,8 +126,8 @@ class OnboardingViewModel(
                         displayName = row?.displayName ?: user.displayName,
                         birthDate = birthDate,
                         birthDateLocked = birthDate.isNotBlank(),
-                        gender = row?.gender.orEmpty(),
-                        lookingFor = lookingForAfterGender(row?.gender.orEmpty(), row?.lookingFor.orEmpty()),
+                        gender = knownGender(row?.gender),
+                        lookingFor = lookingForAfterGender(knownGender(row?.gender)),
                         city = row?.city.orEmpty(),
                         region = row?.region.orEmpty(),
                         marriageTimeline = row?.marriageTimeline.orEmpty(),
@@ -375,29 +375,28 @@ class OnboardingViewModel(
 
     /** "I am a ...": a man looks for a woman and a woman for a man (the server sets it the same way). */
     fun chooseGender(gender: String) = edit {
-        copy(gender = gender, lookingFor = lookingForAfterGender(gender, lookingFor))
+        copy(gender = gender, lookingFor = lookingForAfterGender(gender))
     }
 
     companion object {
         const val TOTAL_STEPS = 10
 
-        /** The "Looking for" choices offered for [gender]; none until a gender is chosen. */
+        /** "I am a ..." offers only these two. */
+        val GENDERS = listOf("man", "woman")
+
+        /** A saved gender that is no longer offered counts as not chosen. */
+        fun knownGender(gender: String?): String = gender?.takeIf { it in GENDERS }.orEmpty()
+
+        /** The "Looking for" choice offered for [gender]; none until a gender is chosen. */
         fun lookingForOptions(gender: String): List<String> = when (gender) {
             "man" -> listOf("woman")
             "woman" -> listOf("man")
-            "" -> emptyList()
-            else -> listOf("woman", "man", "any")
+            else -> emptyList()
         }
 
-        /** Picks the only possible choice for a man or a woman; keeps a choice that is still offered. */
-        fun lookingForAfterGender(gender: String, current: String): String {
-            val options = lookingForOptions(gender)
-            return when {
-                options.size == 1 -> options.single()
-                current in options -> current
-                else -> ""
-            }
-        }
+        /** A man looks for a woman and a woman for a man; nothing before a gender is chosen. */
+        fun lookingForAfterGender(gender: String): String =
+            lookingForOptions(gender).singleOrNull().orEmpty()
         val LANGUAGES = listOf("German", "English", "Turkish", "Arabic", "Polish", "Russian", "French", "Italian", "Spanish")
         val SMOKING = listOf("non_smoker", "occasionally", "smoker")
     }

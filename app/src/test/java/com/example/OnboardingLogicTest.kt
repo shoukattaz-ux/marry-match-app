@@ -61,10 +61,11 @@ class OnboardingLogicTest {
     @Test
     fun choosingAGenderPicksTheMatchingLookingFor() {
         val vm = com.example.ui.viewmodel.OnboardingViewModel
-        assertEquals("woman", vm.lookingForAfterGender("man", "any"))
-        assertEquals("woman", vm.lookingForAfterGender("man", "man"))
-        assertEquals("man", vm.lookingForAfterGender("woman", ""))
-        assertEquals("any", vm.lookingForAfterGender("other", "any"))
-        assertEquals("", vm.lookingForAfterGender("", "woman"))
+        assertEquals("woman", vm.lookingForAfterGender("man"))
+        assertEquals("man", vm.lookingForAfterGender("woman"))
+        assertEquals("", vm.lookingForAfterGender("other"))
+        assertEquals("", vm.knownGender("other"))
+        assertEquals(listOf("man", "woman"), vm.GENDERS)
+        assertEquals("", vm.lookingForAfterGender(""))
     }
 }

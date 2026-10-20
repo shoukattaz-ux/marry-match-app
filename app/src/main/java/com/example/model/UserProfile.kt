@@ -19,8 +19,8 @@ data class UserProfile(
     val birthDate: String = "", // YYYY-MM-DD exact date
     val birthYear: Int = 1998,
     val age: Int = 0,
-    val gender: String = "man", // 'woman' | 'man' | 'other'
-    val lookingFor: String = "woman", // 'woman' | 'man' | 'any'
+    val gender: String = "man", // 'woman' | 'man'
+    val lookingFor: String = "woman", // 'woman' | 'man'
     val city: String = "",
     val region: String = "", // Bundesland
     val bio: String = "",

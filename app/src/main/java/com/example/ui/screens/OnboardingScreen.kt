@@ -296,7 +296,7 @@ private fun GenderStep(state: OnboardingState, vm: OnboardingViewModel, t: (Stri
     StepTitle(t("step_gender"))
     Text(t("gender"), style = MaterialTheme.typography.labelLarge)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf("woman", "man", "other").forEach { g ->
+        OnboardingViewModel.GENDERS.forEach { g ->
             ChoiceChip(label = t(g), selected = state.gender == g) { vm.chooseGender(g) }
         }
     }
