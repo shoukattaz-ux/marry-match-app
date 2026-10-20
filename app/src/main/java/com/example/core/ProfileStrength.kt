@@ -1,6 +1,7 @@
 package com.example.core
 
 import com.example.model.MatchTraits
+import com.example.model.PromptCatalog
 import com.example.model.UserProfile
 
 /**
@@ -27,9 +28,13 @@ data class ProfileStrength(val percent: Int, val tips: List<Tip>) {
     companion object {
         const val BIO_MIN_CHARS = 80
         const val PHOTOS_GOOD = 5
-        const val PROMPTS_GOOD = 3
+        const val PROMPTS_GOOD = PromptCatalog.REQUIRED
+        /** All answered prompts together are worth this much. */
+        const val PROMPT_POINTS = 15
         /** First of the habits / interests / values steps (OnboardingViewModel.STEP_HABITS). */
         const val MATCH_DETAILS_STEP = 7
+        /** The profile questions step (OnboardingViewModel). */
+        const val PROMPTS_STEP = 12
 
         fun of(user: UserProfile): ProfileStrength {
             var percent = if (user.onboardingDone) 20 else 0  // name, age, region and 3 photos
@@ -40,8 +45,9 @@ data class ProfileStrength(val percent: Int, val tips: List<Tip>) {
             part(user.selfieVerified, 15, Tip("strength_tip_selfie", 15, opensSelfie = true))
             part(user.bio.trim().length >= BIO_MIN_CHARS, 15, Tip("strength_tip_bio", 15))
             val prompts = user.prompts.count { it.answer.isNotBlank() }.coerceAtMost(PROMPTS_GOOD)
-            percent += prompts * 5
-            if (prompts < PROMPTS_GOOD) tips += Tip("strength_tip_prompts", (PROMPTS_GOOD - prompts) * 5)
+            val promptPoints = prompts * PROMPT_POINTS / PROMPTS_GOOD
+            percent += promptPoints
+            if (prompts < PROMPTS_GOOD) tips += Tip("strength_tip_prompts", PROMPT_POINTS - promptPoints, editorStep = PROMPTS_STEP)
             part(user.photos.size >= PHOTOS_GOOD, 10, Tip("strength_tip_photos", 10))
             part(user.occupation.isNotBlank() && user.education.isNotBlank(), 10, Tip("strength_tip_job", 10))
             part(user.languages.isNotEmpty() && user.heightCm > 0, 5, Tip("strength_tip_details", 5))

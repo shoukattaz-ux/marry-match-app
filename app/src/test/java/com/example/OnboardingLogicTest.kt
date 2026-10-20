@@ -38,11 +38,34 @@ class OnboardingLogicTest {
     }
 
     @Test
-    fun onboardingStartsWithThreeDifferentEmptyPrompts() {
+    fun onboardingStartsWithSixDifferentEmptyPrompts() {
         val prompts = OnboardingState(editMode = false).prompts
-        assertEquals(3, prompts.size)
-        assertEquals(3, prompts.map { it.key }.toSet().size)
+        assertEquals(6, prompts.size)
+        assertEquals(6, prompts.map { it.key }.toSet().size)
         assertTrue(prompts.all { it.answer.isEmpty() })
+    }
+
+    @Test
+    fun olderProfilesKeepTheirThreeAnswersAndGetThreeMoreQuestions() {
+        val filled = PromptCatalog.fillUp(listOf("five_years" to "Married", "ideal_sunday" to "Hiking", "gone_question" to "x"))
+        assertEquals(PromptCatalog.REQUIRED, filled.size)
+        assertEquals(listOf("five_years" to "Married", "ideal_sunday" to "Hiking"), filled.take(2))
+        assertEquals(PromptCatalog.REQUIRED, filled.map { it.first }.toSet().size)
+        assertTrue(filled.drop(2).all { it.second.isEmpty() })
+    }
+
+    @Test
+    fun everyQuestionHasAnExampleInBothLanguagesAndThereIsChoice() {
+        assertTrue(PromptCatalog.all.size >= PromptCatalog.REQUIRED * 2)
+        assertEquals(PromptCatalog.all.size, PromptCatalog.all.map { it.key }.toSet().size)
+        assertTrue(PromptCatalog.all.all { it.hintEn.isNotBlank() && it.hintDe.isNotBlank() && it.questionEn.endsWith("?") && it.questionDe.endsWith("?") })
+    }
+
+    @Test
+    fun aPromptNeedsARealAnswer() {
+        val vm = com.example.ui.viewmodel.OnboardingViewModel
+        assertTrue(!vm.promptAnswered("   yes   "))
+        assertTrue(vm.promptAnswered("Hiking with my family."))
     }
 
     @Test
@@ -82,6 +105,7 @@ class OnboardingLogicTest {
         assertEquals(13, vm.TOTAL_STEPS)
         assertEquals(listOf(7, 8, 9), listOf(vm.STEP_HABITS, vm.STEP_INTERESTS, vm.STEP_VALUES))
         assertEquals(com.example.core.ProfileStrength.MATCH_DETAILS_STEP, vm.STEP_HABITS)
+        assertEquals(com.example.core.ProfileStrength.PROMPTS_STEP, vm.TOTAL_STEPS - 1)
     }
 
     @Test

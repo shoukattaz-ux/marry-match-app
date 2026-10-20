@@ -610,7 +610,7 @@ private fun PromptsStep(state: OnboardingState, vm: OnboardingViewModel, t: (Str
         var expanded by remember { mutableStateOf(false) }
         val usedByOthers = state.prompts.filterIndexed { i, _ -> i != index }.map { it.key }.toSet()
         val question = PromptCatalog.find(prompt.key)
-        Text(String.format(t("prompt_question"), index + 1), style = MaterialTheme.typography.labelLarge)
+        Text(String.format(t("prompt_question"), index + 1, PromptCatalog.REQUIRED), style = MaterialTheme.typography.labelLarge)
         ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
             OutlinedTextField(
                 value = question?.let { if (lang == AppLanguage.DE) it.questionDe else it.questionEn }.orEmpty(),
@@ -635,10 +635,17 @@ private fun PromptsStep(state: OnboardingState, vm: OnboardingViewModel, t: (Str
         OutlinedTextField(
             value = prompt.answer,
             onValueChange = { v ->
-                if (v.length <= 300) vm.edit { copy(prompts = prompts.replaceAt(index, prompt.copy(answer = v))) }
+                if (v.length <= PromptCatalog.MAX_ANSWER_CHARS) vm.edit { copy(prompts = prompts.replaceAt(index, prompt.copy(answer = v))) }
             },
             label = { Text(t("prompt_answer")) },
-            supportingText = { Text("${prompt.answer.length} / 300") },
+            // An example answer, so it is clear what kind of reply is expected.
+            placeholder = { Text(question?.let { if (lang == AppLanguage.DE) it.hintDe else it.hintEn }.orEmpty()) },
+            supportingText = {
+                Text(
+                    if (OnboardingViewModel.promptAnswered(prompt.answer)) "${prompt.answer.length} / ${PromptCatalog.MAX_ANSWER_CHARS}"
+                    else String.format(t("prompt_min_chars"), PromptCatalog.MIN_ANSWER_CHARS)
+                )
+            },
             minLines = 2,
             modifier = Modifier.fillMaxWidth().testTag("onboarding_prompt_answer_$index"),
             shape = RoundedCornerShape(12.dp)

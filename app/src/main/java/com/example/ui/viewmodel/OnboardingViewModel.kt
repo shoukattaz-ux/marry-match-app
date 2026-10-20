@@ -72,7 +72,7 @@ data class OnboardingState(
     val faceCounts: Map<String, Int?> = emptyMap(),
     val photoBusy: Boolean = false,
     // Step 12
-    val prompts: List<PromptAnswer> = PromptCatalog.all.take(3).map { PromptAnswer(it.key, "") },
+    val prompts: List<PromptAnswer> = PromptCatalog.fillUp(emptyList()).map { PromptAnswer(it.first, it.second) },
     // Step 13
     val bio: String = "",
     /** Localization key of the message to show, or null. */
@@ -148,7 +148,10 @@ class OnboardingViewModel(
                         religionConsent = !row?.religion.isNullOrBlank(),
                         religion = row?.religion.orEmpty(),
                         photos = profile?.photos.orEmpty(),
-                        prompts = profile?.prompts?.takeIf { it.size == 3 } ?: s.prompts,
+                        // Older profiles answered 3 questions; they keep those and get 3 more.
+                        prompts = profile?.prompts
+                            ?.let { saved -> PromptCatalog.fillUp(saved.map { it.key to it.answer }).map { PromptAnswer(it.first, it.second) } }
+                            ?: s.prompts,
                         bio = row?.bio.orEmpty()
                     )
                 }
@@ -209,7 +212,7 @@ class OnboardingViewModel(
         STEP_VALUES -> if (missingAnswers(s, MatchTraits.VALUES)) "values_required" else null
         10 -> if (s.religionConsent && s.religion.isBlank()) "religion_required_text" else null
         11 -> if (s.photos.size < ProfileService.MIN_PHOTOS) "photos_required" else null
-        12 -> if (s.prompts.any { it.answer.isBlank() }) "prompts_required" else null
+        12 -> if (s.prompts.any { !promptAnswered(it.answer) }) "prompts_required" else null
         13 -> if (s.bio.isBlank()) "bio_required" else null
         else -> null
     }
@@ -258,7 +261,7 @@ class OnboardingViewModel(
                 JsonObject(emptyMap())
             }
             12 -> {
-                service.savePrompts(userId, s.prompts.map { PromptAnswer(it.key, it.answer.trim().take(300)) })
+                service.savePrompts(userId, s.prompts.map { PromptAnswer(it.key, it.answer.trim().take(PromptCatalog.MAX_ANSWER_CHARS)) })
                 JsonObject(emptyMap())
             }
             13 -> buildJsonObject {
@@ -424,6 +427,9 @@ class OnboardingViewModel(
         const val STEP_HABITS = 7
         const val STEP_INTERESTS = 8
         const val STEP_VALUES = 9
+
+        /** An answer counts once it says something (at least [PromptCatalog.MIN_ANSWER_CHARS] characters). */
+        fun promptAnswered(answer: String): Boolean = answer.trim().length >= PromptCatalog.MIN_ANSWER_CHARS
 
         /** How many more photos fit, 0..6. */
         fun photosStillAllowed(current: Int): Int = (ProfileService.MAX_PHOTOS - current).coerceIn(0, ProfileService.MAX_PHOTOS)

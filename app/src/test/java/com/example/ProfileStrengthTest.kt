@@ -32,7 +32,7 @@ class ProfileStrengthTest {
         val full = minimal.copy(
             photos = List(5) { "p$it" },
             bio = "x".repeat(ProfileStrength.BIO_MIN_CHARS),
-            prompts = List(3) { prompt },
+            prompts = List(6) { prompt },
             occupation = "Teacher", education = "Master",
             languages = listOf("German"), heightCm = 170,
             selfieVerified = true,
@@ -46,10 +46,12 @@ class ProfileStrengthTest {
     }
 
     @Test
-    fun promptsCountFiveEachAndBlankAnswersDoNotCount() {
-        val s = ProfileStrength.of(minimal.copy(prompts = listOf(prompt, prompt.copy(answer = " "))))
+    fun promptsShareFifteenPointsAndBlankAnswersDoNotCount() {
+        val s = ProfileStrength.of(minimal.copy(prompts = listOf(prompt, prompt, prompt.copy(answer = " "))))
         assertEquals(25, s.percent)
         assertEquals(10, s.tips.first { it.key == "strength_tip_prompts" }.points)
+        // An older profile with 3 answers is asked for the other 3.
+        assertEquals(27, ProfileStrength.of(minimal.copy(prompts = List(3) { prompt })).percent)
     }
 
     @Test

@@ -475,8 +475,15 @@ fun ProfileHingeCard(
                 Spacer(Modifier.height(14.dp))
             }
 
-            profile.photos.drop(2).forEachIndexed { i, url ->
-                ExtraPhoto(url, enabled) { onLikeTarget(photoTarget(i + 2)) }
+            // The remaining photos and answers take turns.
+            val morePhotos = profile.photos.drop(2)
+            val morePrompts = profile.prompts.drop(3)
+            for (i in 0 until maxOf(morePhotos.size, morePrompts.size)) {
+                morePhotos.getOrNull(i)?.let { url -> ExtraPhoto(url, enabled) { onLikeTarget(photoTarget(i + 2)) } }
+                morePrompts.getOrNull(i)?.let { prompt ->
+                    PromptCard(prompt = prompt, isGerman = isGerman, onLikeClick = { onLikeTarget(promptTarget(i + 3)) })
+                    Spacer(Modifier.height(14.dp))
+                }
             }
 
             Spacer(Modifier.height(30.dp))
