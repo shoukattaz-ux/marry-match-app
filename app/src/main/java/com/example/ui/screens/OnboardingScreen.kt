@@ -44,6 +44,8 @@ import com.example.core.Localization
 import com.example.data.MarryMatchRepository
 import com.example.data.PromptAnswer
 import com.example.model.GermanCities
+import com.example.model.MatchTraits
+import com.example.model.Trait
 import com.example.model.PromptCatalog
 import com.example.ui.components.MarryPrimaryButton
 import com.example.ui.components.MarrySecondaryButton
@@ -52,19 +54,21 @@ import com.example.ui.viewmodel.OnboardingState
 import com.example.ui.viewmodel.OnboardingViewModel
 
 /**
- * The 10-step profile setup (blueprint Phase 3), one question per screen with a progress bar.
- * With [editMode] the same steps edit a finished profile and [onClose] is called when done.
+ * The 13-step profile setup (blueprint Phase 3), one topic per screen with a progress bar.
+ * With [editMode] the same steps edit a finished profile, starting at [startStep], and [onClose]
+ * is called when done.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingScreen(
     repository: MarryMatchRepository,
     editMode: Boolean = false,
+    startStep: Int = 1,
     onClose: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val vm: OnboardingViewModel = viewModel(key = "onboarding_$editMode") {
-        OnboardingViewModel(repository, editMode)
+    val vm: OnboardingViewModel = viewModel(key = "onboarding_${editMode}_$startStep") {
+        OnboardingViewModel(repository, editMode, startStep)
     }
     val state by vm.state.collectAsState()
     val lang by repository.appLanguage.collectAsState()
@@ -185,11 +189,14 @@ fun OnboardingScreen(
                     3 -> CityStep(state, vm, t)
                     4 -> TimelineStep(state, vm, t)
                     5 -> FamilyStep(state, vm, t)
-                    6 -> LifestyleStep(state, vm, t)
-                    7 -> ReligionStep(state, vm, t)
-                    8 -> PhotosStep(state, vm, t)
-                    9 -> PromptsStep(state, vm, t, lang)
-                    10 -> BioStep(state, vm, t)
+                    6 -> CareerStep(state, vm, t)
+                    OnboardingViewModel.STEP_HABITS -> TraitsStep(t("step_habits"), t("step_habits_desc"), MatchTraits.HABITS, state, vm, t)
+                    OnboardingViewModel.STEP_INTERESTS -> InterestsStep(state, vm, t)
+                    OnboardingViewModel.STEP_VALUES -> TraitsStep(t("step_values"), t("step_values_desc"), MatchTraits.VALUES, state, vm, t)
+                    10 -> ReligionStep(state, vm, t)
+                    11 -> PhotosStep(state, vm, t)
+                    12 -> PromptsStep(state, vm, t, lang)
+                    13 -> BioStep(state, vm, t)
                 }
 
                 state.errorKey?.let { key ->
@@ -407,7 +414,7 @@ private fun FamilyStep(state: OnboardingState, vm: OnboardingViewModel, t: (Stri
 }
 
 @Composable
-private fun LifestyleStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
+private fun CareerStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
     StepTitle(t("step_lifestyle"))
     OutlinedTextField(
         value = state.occupation,
@@ -434,12 +441,51 @@ private fun LifestyleStep(state: OnboardingState, vm: OnboardingViewModel, t: (S
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp)
     )
-    Text(t("smoking"), style = MaterialTheme.typography.labelLarge)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OnboardingViewModel.SMOKING.forEach { s ->
-            ChoiceChip(label = t("smoking_$s"), selected = state.smoking == s) {
-                vm.edit { copy(smoking = if (smoking == s) "" else s) }
+}
+
+/** Habits (step 7) and values (step 9): one row of answer chips per question. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TraitsStep(
+    title: String,
+    subtitle: String,
+    traits: List<Trait>,
+    state: OnboardingState,
+    vm: OnboardingViewModel,
+    t: (String) -> String
+) {
+    StepTitle(title, subtitle)
+    traits.forEach { trait ->
+        Text(t(trait.labelKey), style = MaterialTheme.typography.labelLarge)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.testTag("onboarding_trait_${trait.key}")
+        ) {
+            trait.options.forEach { option ->
+                ChoiceChip(label = t(trait.optionKey(option)), selected = state.traits[trait.key] == option) {
+                    vm.chooseTrait(trait.key, option)
+                }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun InterestsStep(state: OnboardingState, vm: OnboardingViewModel, t: (String) -> String) {
+    StepTitle(t("step_interests"), t("step_interests_desc"))
+    Text(
+        String.format(t("interests_count"), state.interests.size, MatchTraits.MAX_INTERESTS),
+        style = MaterialTheme.typography.labelLarge,
+        color = if (state.interests.size >= MatchTraits.MIN_INTERESTS) MaterialTheme.colorScheme.secondary else MaterialTheme.extendedColors.muted
+    )
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.testTag("onboarding_interests")
+    ) {
+        MatchTraits.INTERESTS.forEach { key ->
+            ChoiceChip(label = t("interest_$key"), selected = key in state.interests) { vm.toggleInterest(key) }
         }
     }
 }

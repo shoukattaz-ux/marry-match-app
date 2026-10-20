@@ -11,6 +11,8 @@ import com.example.data.MarryMatchRepository
 import com.example.data.ProfilePhoto
 import com.example.data.ProfileService
 import com.example.data.PromptAnswer
+import com.example.model.MatchTraits
+import com.example.model.Trait
 import com.example.model.PromptCatalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,17 +60,20 @@ data class OnboardingState(
     val occupation: String = "",
     val education: String = "",
     val heightText: String = "",
-    val smoking: String = "",
-    // Step 7
+    // Steps 7 (habits) and 9 (values): answer by Trait.key, see MatchTraits
+    val traits: Map<String, String> = emptyMap(),
+    // Step 8
+    val interests: Set<String> = emptySet(),
+    // Step 10
     val religionConsent: Boolean = false,
     val religion: String = "",
-    // Step 8
+    // Step 11
     val photos: List<ProfilePhoto> = emptyList(),
     val faceCounts: Map<String, Int?> = emptyMap(),
     val photoBusy: Boolean = false,
-    // Step 9
+    // Step 12
     val prompts: List<PromptAnswer> = PromptCatalog.all.take(3).map { PromptAnswer(it.key, "") },
-    // Step 10
+    // Step 13
     val bio: String = "",
     /** Localization key of the message to show, or null. */
     val errorKey: String? = null,
@@ -87,13 +92,15 @@ data class OnboardingState(
 }
 
 /**
- * Drives the 10-step onboarding (Phase 3) and the same steps for editing a finished profile.
+ * Drives the 13-step onboarding (Phase 3) and the same steps for editing a finished profile.
  * Each step is saved to the server when the user continues, so a user who leaves midway
  * resumes at the step stored in profiles.onboarding_step.
  */
 class OnboardingViewModel(
     private val repository: MarryMatchRepository,
-    editMode: Boolean
+    editMode: Boolean,
+    /** Where the editor opens, e.g. [STEP_HABITS] to add the match details. */
+    private val startStep: Int = 1
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(OnboardingState(editMode = editMode))
@@ -122,7 +129,7 @@ class OnboardingViewModel(
                 _state.update { s ->
                     s.copy(
                         loading = false,
-                        step = if (s.editMode) 1 else (row?.onboardingStep ?: 1),
+                        step = if (s.editMode) startStep.coerceIn(1, TOTAL_STEPS) else (row?.onboardingStep ?: 1),
                         displayName = row?.displayName ?: user.displayName,
                         birthDate = birthDate,
                         birthDateLocked = birthDate.isNotBlank(),
@@ -136,7 +143,8 @@ class OnboardingViewModel(
                         occupation = row?.occupation.orEmpty(),
                         education = row?.education.orEmpty(),
                         heightText = row?.heightCm?.toString().orEmpty(),
-                        smoking = row?.smoking.orEmpty(),
+                        traits = row?.let { MatchTraits.known(it.traits) } ?: emptyMap(),
+                        interests = row?.interests.orEmpty().filter { it in MatchTraits.INTERESTS }.toSet(),
                         religionConsent = !row?.religion.isNullOrBlank(),
                         religion = row?.religion.orEmpty(),
                         photos = profile?.photos.orEmpty(),
@@ -154,7 +162,7 @@ class OnboardingViewModel(
         _state.update { if (it.step > 1) it.copy(step = it.step - 1, errorKey = null) else it }
     }
 
-    /** Validates and saves the current step, then moves on (or finishes after step 10). */
+    /** Validates and saves the current step, then moves on (or finishes after the last step). */
     fun next() {
         val s = _state.value
         if (s.saving || s.photoBusy) return
@@ -196,10 +204,13 @@ class OnboardingViewModel(
             s.heightText.isNotBlank() && s.heightText.toIntOrNull()?.let { it in 120..230 } != true -> "height_invalid"
             else -> null
         }
-        7 -> if (s.religionConsent && s.religion.isBlank()) "religion_required_text" else null
-        8 -> if (s.photos.size < ProfileService.MIN_PHOTOS) "photos_required" else null
-        9 -> if (s.prompts.any { it.answer.isBlank() }) "prompts_required" else null
-        10 -> if (s.bio.isBlank()) "bio_required" else null
+        STEP_HABITS -> if (missingAnswers(s, MatchTraits.HABITS)) "habits_required" else null
+        STEP_INTERESTS -> if (s.interests.size < MatchTraits.MIN_INTERESTS) "interests_required" else null
+        STEP_VALUES -> if (missingAnswers(s, MatchTraits.VALUES)) "values_required" else null
+        10 -> if (s.religionConsent && s.religion.isBlank()) "religion_required_text" else null
+        11 -> if (s.photos.size < ProfileService.MIN_PHOTOS) "photos_required" else null
+        12 -> if (s.prompts.any { it.answer.isBlank() }) "prompts_required" else null
+        13 -> if (s.bio.isBlank()) "bio_required" else null
         else -> null
     }
 
@@ -225,9 +236,13 @@ class OnboardingViewModel(
                 put("occupation", s.occupation.trim())
                 put("education", s.education.trim().ifBlank { null }.toJson())
                 put("height_cm", s.heightText.toIntOrNull()?.let { JsonPrimitive(it) } ?: JsonNull)
-                put("smoking", s.smoking.ifBlank { null }.toJson())
             }
-            7 -> {
+            STEP_HABITS -> traitFields(s, MatchTraits.HABITS)
+            STEP_INTERESTS -> buildJsonObject {
+                put("interests", JsonArray(MatchTraits.INTERESTS.filter { it in s.interests }.map { JsonPrimitive(it) }))
+            }
+            STEP_VALUES -> traitFields(s, MatchTraits.VALUES)
+            10 -> {
                 if (s.religionConsent) {
                     // Consent is stored before the sensitive value itself (GDPR Art. 9).
                     service.saveConsent(userId, "sensitive_profile", AppConfig.SENSITIVE_PROFILE_VERSION)
@@ -236,17 +251,17 @@ class OnboardingViewModel(
                     put("religion", (if (s.religionConsent) s.religion.trim() else null).toJson())
                 }
             }
-            8 -> {
+            11 -> {
                 ensureMainPhotoHasOneFace(s)
                 service.savePhotoOrder(s.photos)
                 _state.update { st -> st.copy(photos = st.photos.mapIndexed { i, p -> p.copy(position = i) }) }
                 JsonObject(emptyMap())
             }
-            9 -> {
+            12 -> {
                 service.savePrompts(userId, s.prompts.map { PromptAnswer(it.key, it.answer.trim().take(300)) })
                 JsonObject(emptyMap())
             }
-            10 -> buildJsonObject {
+            13 -> buildJsonObject {
                 put("bio", s.bio.trim().take(500))
                 put("onboarding_done", true)
             }
@@ -261,6 +276,25 @@ class OnboardingViewModel(
             }
             service.saveProfile(userId, withProgress, create = !profileRowExists)
             profileRowExists = true
+        }
+    }
+
+    private fun traitFields(s: OnboardingState, traits: List<Trait>): JsonObject = buildJsonObject {
+        traits.forEach { put(it.key, s.traits[it.key].toJson()) }
+    }
+
+    /** Picks [option] for [key]; tapping the chosen answer again clears it. */
+    fun chooseTrait(key: String, option: String) = edit {
+        copy(traits = if (traits[key] == option) traits - key else traits + (key to option))
+    }
+
+    /** Adds or removes an interest; at most [MatchTraits.MAX_INTERESTS]. */
+    fun toggleInterest(key: String) {
+        val s = _state.value
+        when {
+            key in s.interests -> edit { copy(interests = interests - key) }
+            s.interests.size >= MatchTraits.MAX_INTERESTS -> _state.update { it.copy(errorKey = "interests_limit") }
+            else -> edit { copy(interests = interests + key) }
         }
     }
 
@@ -379,7 +413,13 @@ class OnboardingViewModel(
     }
 
     companion object {
-        const val TOTAL_STEPS = 10
+        const val TOTAL_STEPS = 13
+        const val STEP_HABITS = 7
+        const val STEP_INTERESTS = 8
+        const val STEP_VALUES = 9
+
+        fun missingAnswers(s: OnboardingState, traits: List<Trait>): Boolean =
+            traits.any { s.traits[it.key] !in it.options }
 
         /** "I am a ..." offers only these two. */
         val GENDERS = listOf("man", "woman")
@@ -398,6 +438,5 @@ class OnboardingViewModel(
         fun lookingForAfterGender(gender: String): String =
             lookingForOptions(gender).singleOrNull().orEmpty()
         val LANGUAGES = listOf("German", "English", "Turkish", "Arabic", "Polish", "Russian", "French", "Italian", "Spanish")
-        val SMOKING = listOf("non_smoker", "occasionally", "smoker")
     }
 }

@@ -72,6 +72,7 @@ fun MainApp(
 
     var activeTab by remember { mutableStateOf(AppTab.DISCOVER) }
     var activeSubScreen by remember { mutableStateOf(ActiveSubScreen.NONE) }
+    var editorStartStep by remember { mutableIntStateOf(1) }
     var activeChatMatch by remember { mutableStateOf<MatchItem?>(null) }
     var reportUserTarget by remember { mutableStateOf<UserProfile?>(null) }
 
@@ -177,6 +178,7 @@ fun MainApp(
                         OnboardingScreen(
                             repository = repository,
                             editMode = true,
+                            startStep = editorStartStep,
                             onClose = { activeSubScreen = ActiveSubScreen.NONE }
                         )
                     }
@@ -289,7 +291,14 @@ fun MainApp(
                                     onOpenSettings = { activeSubScreen = ActiveSubScreen.SETTINGS },
                                     onOpenAdmin = { activeSubScreen = ActiveSubScreen.ADMIN_PANEL },
                                     onOpenSelfieVerification = { activeSubScreen = ActiveSubScreen.SELFIE_VERIFICATION },
-                                    onOpenProfileCreation = { activeSubScreen = ActiveSubScreen.PROFILE_CREATION }
+                                    onOpenProfileCreation = {
+                                        editorStartStep = 1
+                                        activeSubScreen = ActiveSubScreen.PROFILE_CREATION
+                                    },
+                                    onOpenProfileEditorAt = { step ->
+                                        editorStartStep = step
+                                        activeSubScreen = ActiveSubScreen.PROFILE_CREATION
+                                    }
                                 )
                             }
                         }

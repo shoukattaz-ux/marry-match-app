@@ -4,6 +4,7 @@ import android.util.Log
 import com.example.core.AppConfig
 import com.example.core.AppLanguage
 import com.example.model.MatchItem
+import com.example.model.MatchTraits
 import com.example.model.ProfilePrompt
 import com.example.model.PromptCatalog
 import com.example.model.UserProfile
@@ -624,7 +625,8 @@ class MarryMatchRepository {
             education = row.education.orEmpty(),
             occupation = row.occupation.orEmpty(),
             languages = row.languages,
-            interests = emptyList(),
+            interests = row.interests.filter { it in MatchTraits.INTERESTS },
+            traits = MatchTraits.known(row.traits),
             heightCm = row.heightCm ?: 0,
             onboardingDone = row.onboardingDone,
             photos = profile.photos.map { it.url },

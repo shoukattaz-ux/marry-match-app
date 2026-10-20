@@ -27,11 +27,14 @@ data class UserProfile(
     val marriageTimeline: String = "1_2y", // 'within_1y' | '1_2y' | '2_5y' | 'open'
     val wantsChildren: String = "yes", // 'yes' | 'no' | 'open'
     val religion: String = "", // sensitive optional data
-    val smoking: String = "Non-smoker",
+    val smoking: String = "",
     val education: String = "",
     val occupation: String = "",
     val languages: List<String> = listOf("German", "English"),
-    val interests: List<String> = listOf("Hiking", "Cooking", "Family Dinners", "Reading", "Travel"),
+    /** Keys from [MatchTraits.INTERESTS]. */
+    val interests: List<String> = emptyList(),
+    /** Habit and value answers by [Trait.key], only offered options (see [MatchTraits]). */
+    val traits: Map<String, String> = emptyMap(),
     val heightCm: Int = 175,
     val onboardingDone: Boolean = false,
     val photos: List<String> = emptyList(), // image urls

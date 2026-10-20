@@ -35,6 +35,7 @@ import com.example.core.CityLocator
 import com.example.core.Localization
 import com.example.data.DiscoveryPrefs
 import com.example.data.MarryMatchRepository
+import com.example.model.MatchTraits
 import com.example.model.UserProfile
 import com.example.ui.components.*
 import com.example.ui.theme.extendedColors
@@ -53,6 +54,7 @@ fun DiscoverScreen(
 ) {
     val lang by repository.appLanguage.collectAsState()
     val state by matchingViewModel.uiState.collectAsState()
+    val me by repository.currentUser.collectAsState()
     val t: (String) -> String = { Localization.t(it, lang) }
 
     var showFilters by remember { mutableStateOf(false) }
@@ -106,6 +108,7 @@ fun DiscoverScreen(
                 current != null -> ProfileHingeCard(
                     profile = current,
                     lang = lang,
+                    myInterests = me.interests,
                     enabled = !state.sending,
                     onPass = matchingViewModel::pass,
                     onLike = { matchingViewModel.like() },
@@ -341,6 +344,7 @@ fun ProfileHingeCard(
     profile: UserProfile,
     lang: AppLanguage,
     enabled: Boolean,
+    myInterests: List<String> = emptyList(),
     onPass: () -> Unit,
     onLike: () -> Unit,
     onLikeTarget: (LikeTarget) -> Unit,
@@ -440,6 +444,7 @@ fun ProfileHingeCard(
 
             DetailsCard(profile, t)
             Spacer(Modifier.height(14.dp))
+            InterestsCard(profile.interests, myInterests, t)
 
             if (profile.photos.size > 1) {
                 ExtraPhoto(profile.photos[1], enabled) { onLikeTarget(photoTarget(1)) }
@@ -564,9 +569,12 @@ private fun DetailsCard(profile: UserProfile, t: (String) -> String) {
         if (profile.education.isNotBlank()) add("🎓 ${profile.education}")
         if (profile.wantsChildren in listOf("yes", "no", "open")) add("👶 ${t("wants_children")}: ${t("children_${profile.wantsChildren}")}")
         if (profile.heightCm > 0) add("📏 ${profile.heightCm} cm")
-        if (profile.smoking in OnboardingViewModel.SMOKING) add("🚭 ${t("smoking_${profile.smoking}")}")
         if (profile.religion.isNotBlank()) add("✨ ${profile.religion}")
         if (profile.languages.isNotEmpty()) add("🗣️ ${profile.languages.joinToString(", ") { t("lang_$it") }}")
+        // Habits and values, e.g. "Smoking habit: Non-smoker"
+        MatchTraits.ALL.forEach { trait ->
+            profile.traits[trait.key]?.let { add("${t(trait.labelKey)}: ${t(trait.optionKey(it))}") }
+        }
     }
     if (chips.isEmpty()) return
     Card(
@@ -582,4 +590,34 @@ private fun DetailsCard(profile: UserProfile, t: (String) -> String) {
             chips.forEach { DetailChip(label = it) }
         }
     }
+}
+
+/** Their interests; the ones the viewer shares come first and are highlighted. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun InterestsCard(interests: List<String>, myInterests: List<String>, t: (String) -> String) {
+    if (interests.isEmpty()) return
+    val shared = MatchTraits.shared(myInterests, interests)
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier.fillMaxWidth().testTag("card_interests")
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(t("interests_title"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            if (shared.isNotEmpty()) {
+                Text(
+                    String.format(t("interests_in_common"), shared.size),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                (shared + (interests - shared.toSet())).forEach { key ->
+                    DetailChip(label = t("interest_$key"), highlighted = key in shared)
+                }
+            }
+        }
+    }
+    Spacer(Modifier.height(14.dp))
 }

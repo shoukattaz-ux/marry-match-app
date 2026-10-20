@@ -286,12 +286,17 @@ fun SafetyNoticeBanner(
 @Composable
 fun DetailChip(
     label: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Marks something both people share, e.g. a common interest. */
+    highlighted: Boolean = false
 ) {
     Surface(
         shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = if (highlighted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+        ),
         modifier = modifier
     ) {
         Text(
@@ -300,7 +305,7 @@ fun DetailChip(
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp
             ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (highlighted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
         )
     }

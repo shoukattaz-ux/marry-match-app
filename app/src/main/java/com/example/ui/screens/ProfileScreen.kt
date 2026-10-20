@@ -38,6 +38,7 @@ import com.example.core.AppConfig
 import com.example.core.AppLanguage
 import com.example.core.Localization
 import com.example.core.ProfileStrength
+import com.example.model.MatchTraits
 import kotlinx.coroutines.launch
 import com.example.ui.components.AvatarAdjustDialog
 import com.example.ui.components.FocusedPhoto
@@ -46,7 +47,7 @@ import com.example.data.SelfieStatus
 import com.example.ui.components.*
 import com.example.ui.theme.extendedColors
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun ProfileScreen(
     repository: MarryMatchRepository,
@@ -54,6 +55,8 @@ fun ProfileScreen(
     onOpenAdmin: () -> Unit,
     onOpenSelfieVerification: () -> Unit = {},
     onOpenProfileCreation: () -> Unit = {},
+    /** Opens the profile editor at a given step (e.g. the habits / interests / values steps). */
+    onOpenProfileEditorAt: (Int) -> Unit = { onOpenProfileCreation() },
     modifier: Modifier = Modifier
 ) {
     val lang by repository.appLanguage.collectAsState()
@@ -214,7 +217,7 @@ fun ProfileScreen(
             ProfileStrengthCard(
                 strength = ProfileStrength.of(user),
                 lang = lang,
-                onOpenEditor = onOpenProfileCreation,
+                onOpenEditor = onOpenProfileEditorAt,
                 onOpenSelfie = onOpenSelfieVerification
             )
 
@@ -348,14 +351,31 @@ fun ProfileScreen(
             // Interests Section
             if (user.interests.isNotEmpty()) {
                 Text(
-                    text = if (lang == AppLanguage.EN) "Interests & Passions" else "Interessen & Hobbys",
+                    text = Localization.t("interests_title", lang),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
 
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(user.interests) { interest ->
-                        DetailChip(label = interest)
+                        DetailChip(label = Localization.t("interest_$interest", lang))
+                    }
+                }
+            }
+
+            // Habits & values section
+            val answered = MatchTraits.ALL.filter { it.key in user.traits }
+            if (answered.isNotEmpty()) {
+                Text(
+                    text = Localization.t("habits_values_title", lang),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    answered.forEach { trait ->
+                        DetailChip(
+                            label = "${Localization.t(trait.labelKey, lang)}: ${Localization.t(trait.optionKey(user.traits.getValue(trait.key)), lang)}"
+                        )
                     }
                 }
             }
@@ -532,7 +552,7 @@ fun ProfileScreen(
 private fun ProfileStrengthCard(
     strength: ProfileStrength,
     lang: AppLanguage,
-    onOpenEditor: () -> Unit,
+    onOpenEditor: (step: Int) -> Unit,
     onOpenSelfie: () -> Unit
 ) {
     val t: (String) -> String = { Localization.t(it, lang) }
@@ -566,7 +586,7 @@ private fun ProfileStrengthCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .clickable { if (tip.opensSelfie) onOpenSelfie() else onOpenEditor() }
+                            .clickable { if (tip.opensSelfie) onOpenSelfie() else onOpenEditor(tip.editorStep) }
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically

@@ -35,8 +35,28 @@ data class ProfileRow(
     val languages: List<String> = emptyList(),
     @SerialName("height_cm") val heightCm: Int? = null,
     @SerialName("onboarding_done") val onboardingDone: Boolean = false,
-    @SerialName("onboarding_step") val onboardingStep: Int = 1
-)
+    @SerialName("onboarding_step") val onboardingStep: Int = 1,
+    val interests: List<String> = emptyList(),
+    val drinking: String? = null,
+    val exercise: String? = null,
+    val diet: String? = null,
+    val pets: String? = null,
+    val sleep: String? = null,
+    val personality: String? = null,
+    @SerialName("family_closeness") val familyCloseness: String? = null,
+    val household: String? = null,
+    @SerialName("home_after_marriage") val homeAfterMarriage: String? = null,
+    val relocate: String? = null
+) {
+    /** Habit and value answers by column name (see [com.example.model.MatchTraits]). */
+    val traits: Map<String, String?>
+        get() = mapOf(
+            "smoking" to smoking, "drinking" to drinking, "exercise" to exercise, "diet" to diet,
+            "pets" to pets, "sleep" to sleep, "personality" to personality,
+            "family_closeness" to familyCloseness, "household" to household,
+            "home_after_marriage" to homeAfterMarriage, "relocate" to relocate
+        )
+}
 
 @Serializable
 private data class PhotoRow(
@@ -260,7 +280,9 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
         private val PROFILE_COLUMNS = listOf(
             "id", "display_name", "birth_date", "gender", "looking_for", "city", "region", "bio",
             "marriage_timeline", "wants_children", "religion", "smoking", "education", "occupation",
-            "languages", "height_cm", "onboarding_done", "onboarding_step"
+            "languages", "height_cm", "onboarding_done", "onboarding_step", "interests",
+            "drinking", "exercise", "diet", "pets", "sleep", "personality", "family_closeness",
+            "household", "home_after_marriage", "relocate"
         )
     }
 }

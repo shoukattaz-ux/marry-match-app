@@ -40,7 +40,7 @@ object LegalTexts {
                 "1. Who is responsible" to "$operator\n\nYou can reach us at the email address above for every privacy question.",
                 "2. What we store and why" to
                     "• Account: email address and password (stored only as a secure hash by our hosting provider), date of birth. Purpose: your account and the 18+ check. Legal basis: Art. 6(1)(b) GDPR (contract).\n" +
-                    "• Profile: name, gender, who you are looking for, city and Bundesland, marriage plans, children, languages, education, job, height, smoking, bio, answers to questions and photos. Purpose: showing your profile to suitable members. Art. 6(1)(b) GDPR.\n" +
+                    "• Profile: name, gender, who you are looking for, city and Bundesland, marriage plans, children, languages, education, job, height, habits (smoking, alcohol, sport, diet, pets, daily rhythm), interests, values (personality, family ties, roles at home, where to live, willingness to move), bio, answers to questions and photos. Purpose: showing your profile to suitable members. Art. 6(1)(b) GDPR.\n" +
                     "• Religion (optional): only with your explicit consent, Art. 9(2)(a) GDPR. You can hide or delete it at any time.\n" +
                     "• Likes, matches, chat messages, blocks and reports. Purpose: the service itself and keeping members safe. Art. 6(1)(b) and (f) GDPR.\n" +
                     "• Records of your consents (which text version and when). Art. 6(1)(c) and 7(1) GDPR.",
@@ -74,7 +74,7 @@ object LegalTexts {
                 "1. Verantwortlicher" to "$operator\n\nFür alle Fragen zum Datenschutz erreichen Sie uns unter der oben genannten E-Mail-Adresse.",
                 "2. Welche Daten wir speichern und warum" to
                     "• Konto: E-Mail-Adresse und Passwort (beim Hosting-Anbieter nur als sicherer Hash gespeichert), Geburtsdatum. Zweck: Ihr Konto und die Prüfung ab 18. Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO (Vertrag).\n" +
-                    "• Profil: Name, Geschlecht, gesuchtes Geschlecht, Stadt und Bundesland, Heiratspläne, Kinderwunsch, Sprachen, Ausbildung, Beruf, Größe, Rauchen, Über-mich-Text, Antworten auf Fragen und Fotos. Zweck: Anzeige Ihres Profils für passende Mitglieder. Art. 6 Abs. 1 lit. b DSGVO.\n" +
+                    "• Profil: Name, Geschlecht, gesuchtes Geschlecht, Stadt und Bundesland, Heiratspläne, Kinderwunsch, Sprachen, Ausbildung, Beruf, Größe, Gewohnheiten (Rauchen, Alkohol, Sport, Ernährung, Haustiere, Tagesrhythmus), Interessen, Werte (Persönlichkeit, Familienbindung, Rollen im Haushalt, Wohnort, Umzugsbereitschaft), Über-mich-Text, Antworten auf Fragen und Fotos. Zweck: Anzeige Ihres Profils für passende Mitglieder. Art. 6 Abs. 1 lit. b DSGVO.\n" +
                     "• Religion (freiwillig): nur mit Ihrer ausdrücklichen Einwilligung, Art. 9 Abs. 2 lit. a DSGVO. Sie können sie jederzeit ausblenden oder löschen.\n" +
                     "• Likes, Matches, Chatnachrichten, Blockierungen und Meldungen. Zweck: der Dienst selbst und die Sicherheit der Mitglieder. Art. 6 Abs. 1 lit. b und f DSGVO.\n" +
                     "• Nachweise Ihrer Einwilligungen (welche Textversion und wann). Art. 6 Abs. 1 lit. c und Art. 7 Abs. 1 DSGVO.",

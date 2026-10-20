@@ -1,6 +1,7 @@
 package com.example
 
 import com.example.core.ProfileStrength
+import com.example.model.MatchTraits
 import com.example.model.ProfilePrompt
 import com.example.model.UserProfile
 import org.junit.Assert.assertEquals
@@ -18,9 +19,9 @@ class ProfileStrengthTest {
     )
 
     @Test
-    fun aFreshProfileStartsAtThirtyWithTheBiggestStepsFirst() {
+    fun aFreshProfileStartsAtTwentyWithTheBiggestStepsFirst() {
         val s = ProfileStrength.of(minimal)
-        assertEquals(30, s.percent)
+        assertEquals(20, s.percent)
         assertEquals("strength_starting", s.levelKey)
         assertEquals(listOf("strength_tip_selfie", "strength_tip_bio", "strength_tip_prompts"), s.tips.take(3).map { it.key })
         assertTrue(s.tips.first().opensSelfie)
@@ -34,7 +35,9 @@ class ProfileStrengthTest {
             prompts = List(3) { prompt },
             occupation = "Teacher", education = "Master",
             languages = listOf("German"), heightCm = 170,
-            selfieVerified = true
+            selfieVerified = true,
+            interests = MatchTraits.INTERESTS.take(3),
+            traits = MatchTraits.ALL.associate { it.key to it.options.first() }
         )
         val s = ProfileStrength.of(full)
         assertEquals(100, s.percent)
@@ -45,12 +48,22 @@ class ProfileStrengthTest {
     @Test
     fun promptsCountFiveEachAndBlankAnswersDoNotCount() {
         val s = ProfileStrength.of(minimal.copy(prompts = listOf(prompt, prompt.copy(answer = " "))))
-        assertEquals(35, s.percent)
+        assertEquals(25, s.percent)
         assertEquals(10, s.tips.first { it.key == "strength_tip_prompts" }.points)
     }
 
     @Test
     fun aShortBioDoesNotCount() {
-        assertEquals(30, ProfileStrength.of(minimal.copy(bio = "Hi")).percent)
+        assertEquals(20, ProfileStrength.of(minimal.copy(bio = "Hi")).percent)
+    }
+
+    @Test
+    fun matchDetailsNeedThreeInterestsAndEveryAnswer() {
+        val answers = MatchTraits.ALL.associate { it.key to it.options.first() }
+        val tip = ProfileStrength.of(minimal).tips.first { it.key == "strength_tip_match" }
+        assertEquals(ProfileStrength.MATCH_DETAILS_STEP, tip.editorStep)
+        assertEquals(20, ProfileStrength.of(minimal.copy(interests = MatchTraits.INTERESTS.take(2), traits = answers)).percent)
+        assertEquals(20, ProfileStrength.of(minimal.copy(interests = MatchTraits.INTERESTS.take(3), traits = answers - "relocate")).percent)
+        assertEquals(30, ProfileStrength.of(minimal.copy(interests = MatchTraits.INTERESTS.take(3), traits = answers)).percent)
     }
 }

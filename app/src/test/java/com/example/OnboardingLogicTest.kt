@@ -68,4 +68,19 @@ class OnboardingLogicTest {
         assertEquals(listOf("man", "woman"), vm.GENDERS)
         assertEquals("", vm.lookingForAfterGender(""))
     }
+
+    @Test
+    fun habitsAndValuesStepsNeedEveryAnswer() {
+        val vm = com.example.ui.viewmodel.OnboardingViewModel
+        val habits = com.example.model.MatchTraits.HABITS
+        val all = habits.associate { it.key to it.options.first() }
+        val state = com.example.ui.viewmodel.OnboardingState(editMode = false)
+        assertTrue(vm.missingAnswers(state, habits))
+        assertTrue(vm.missingAnswers(state.copy(traits = all - "sleep"), habits))
+        assertTrue(vm.missingAnswers(state.copy(traits = all + ("diet" to "halal")), habits))
+        assertTrue(!vm.missingAnswers(state.copy(traits = all), habits))
+        assertEquals(13, vm.TOTAL_STEPS)
+        assertEquals(listOf(7, 8, 9), listOf(vm.STEP_HABITS, vm.STEP_INTERESTS, vm.STEP_VALUES))
+        assertEquals(com.example.core.ProfileStrength.MATCH_DETAILS_STEP, vm.STEP_HABITS)
+    }
 }

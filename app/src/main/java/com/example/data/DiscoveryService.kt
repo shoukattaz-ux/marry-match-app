@@ -1,5 +1,6 @@
 package com.example.data
 
+import com.example.model.MatchTraits
 import com.example.model.PhotoFocus
 import com.example.model.ProfilePrompt
 import com.example.model.PromptCatalog
@@ -99,6 +100,8 @@ private data class CardDto(
     val education: String? = null,
     val occupation: String? = null,
     val languages: List<String> = emptyList(),
+    val interests: List<String> = emptyList(),
+    val traits: Map<String, String> = emptyMap(),
     @SerialName("height_cm") val heightCm: Int? = null,
     @SerialName("selfie_verified") val selfieVerified: Boolean = false,
     @SerialName("phone_verified") val phoneVerified: Boolean = false,
@@ -274,7 +277,8 @@ class SupabaseDiscoveryService(
             education = education.orEmpty(),
             occupation = occupation.orEmpty(),
             languages = languages,
-            interests = emptyList(),
+            interests = interests.filter { it in MatchTraits.INTERESTS },
+            traits = MatchTraits.known(traits),
             heightCm = heightCm ?: 0,
             onboardingDone = true,
             photos = signed.map { it.second },
