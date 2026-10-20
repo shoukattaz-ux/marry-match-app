@@ -50,7 +50,8 @@ enum class ActiveSubScreen {
     PRIVACY_SETTINGS,
     PROFILE_CREATION,
     CHAPERONE,
-    CHAT_MEDIA_SETTINGS
+    CHAT_MEDIA_SETTINGS,
+    NOTIFICATION_SOUNDS
 }
 
 @Composable
@@ -143,7 +144,8 @@ fun MainApp(
                             onOpenSafety = { activeSubScreen = ActiveSubScreen.SAFETY_CENTER },
                             onOpenPrivacySettings = { activeSubScreen = ActiveSubScreen.PRIVACY_SETTINGS },
                             onOpenChaperone = { activeSubScreen = ActiveSubScreen.CHAPERONE },
-                            onOpenChatMedia = { activeSubScreen = ActiveSubScreen.CHAT_MEDIA_SETTINGS }
+                            onOpenChatMedia = { activeSubScreen = ActiveSubScreen.CHAT_MEDIA_SETTINGS },
+                            onOpenNotificationSounds = { activeSubScreen = ActiveSubScreen.NOTIFICATION_SOUNDS }
                         )
                     }
                     ActiveSubScreen.SAFETY_CENTER -> {
@@ -192,6 +194,13 @@ fun MainApp(
                     ActiveSubScreen.CHAT_MEDIA_SETTINGS -> {
                         BackHandler { activeSubScreen = ActiveSubScreen.SETTINGS }
                         ChatMediaSettingsScreen(
+                            repository = repository,
+                            onBack = { activeSubScreen = ActiveSubScreen.SETTINGS }
+                        )
+                    }
+                    ActiveSubScreen.NOTIFICATION_SOUNDS -> {
+                        BackHandler { activeSubScreen = ActiveSubScreen.SETTINGS }
+                        NotificationSoundScreen(
                             repository = repository,
                             onBack = { activeSubScreen = ActiveSubScreen.SETTINGS }
                         )

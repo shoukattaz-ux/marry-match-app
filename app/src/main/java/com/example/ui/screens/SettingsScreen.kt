@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.Security
@@ -50,6 +51,7 @@ fun SettingsScreen(
     onOpenPrivacySettings: () -> Unit = {},
     onOpenChaperone: () -> Unit = {},
     onOpenChatMedia: () -> Unit = {},
+    onOpenNotificationSounds: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val lang by repository.appLanguage.collectAsState()
@@ -156,6 +158,12 @@ fun SettingsScreen(
                         title = Localization.t("notify_likes", lang),
                         checked = notifications.likes,
                         onCheckedChange = { on -> changeNotifications { it.copy(likes = on) } }
+                    )
+                    HorizontalDivider()
+                    SettingNavRow(
+                        icon = Icons.Default.MusicNote,
+                        title = Localization.t("notify_sound_title", lang),
+                        onClick = onOpenNotificationSounds
                     )
                     Text(Localization.t("notifications_no_text", lang), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
                 }

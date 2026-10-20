@@ -5,6 +5,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // app. POST { user_id, kind: "match" | "message" | "like" | "your_turn" | "expiring", data: { match_id?, name? } }.
 // The Firebase key comes from the FIREBASE_SERVICE_ACCOUNT_JSON secret and never leaves here.
 // Pushes never contain message text: only who wrote, so nothing private shows on a lock screen.
+// Tokens marked data_only (newer apps) get a data-only push: the app then shows it itself, with
+// the sound and vibration the user chose for that kind. Older apps get a notification push.
 
 type Kind = "match" | "message" | "like" | "your_turn" | "expiring";
 type Lang = "en" | "de";
@@ -107,7 +109,7 @@ Deno.serve(async (req: Request) => {
   const kind = body.kind;
   if (!body.user_id || !kind || !(kind in TEXTS)) return json({ error: "bad_request" }, 400);
 
-  const { data: tokens } = await admin.from("push_tokens").select("token, lang").eq("user_id", body.user_id);
+  const { data: tokens } = await admin.from("push_tokens").select("token, lang, data_only").eq("user_id", body.user_id);
   if (!tokens || tokens.length === 0) return json({ ok: true, sent: 0 });
 
   let bearer: string;
@@ -123,16 +125,22 @@ Deno.serve(async (req: Request) => {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },
       body: JSON.stringify({
-        message: {
-          token: t.token,
-          notification: { title, body: text },
-          data: { kind, match_id: matchId },
-          android: {
-            priority: "high",
-            // One notification per chat or kind: a new one replaces the old instead of piling up.
-            notification: { channel_id: "marrymatch_default", tag: `${kind}_${matchId}` },
+        message: t.data_only
+          ? {
+            token: t.token,
+            data: { kind, match_id: matchId, title, body: text },
+            android: { priority: "high" },
+          }
+          : {
+            token: t.token,
+            notification: { title, body: text },
+            data: { kind, match_id: matchId },
+            android: {
+              priority: "high",
+              // One notification per chat or kind: a new one replaces the old instead of piling up.
+              notification: { channel_id: "marrymatch_default", tag: `${kind}_${matchId}` },
+            },
           },
-        },
       }),
     });
     if (res.ok) {

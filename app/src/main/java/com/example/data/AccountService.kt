@@ -102,9 +102,11 @@ class SupabaseAccountService(
     }
 
     override suspend fun registerPushToken(token: String, lang: String) {
-        client.postgrest.rpc("register_push_token", buildJsonObject {
+        // data_only: this app shows pushes itself, with the sound and vibration chosen per kind.
+        client.postgrest.rpc("register_push_token_v2", buildJsonObject {
             put("p_token", token)
             put("p_lang", lang)
+            put("p_data_only", true)
         })
     }
 
