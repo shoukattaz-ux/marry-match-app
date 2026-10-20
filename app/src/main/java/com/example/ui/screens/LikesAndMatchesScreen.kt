@@ -42,48 +42,36 @@ import com.example.ui.components.MarryPrimaryButton
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.extendedColors
 
+/**
+ * "Likes You" tab: only the people who like you (shown blurred until you like them back in
+ * Discover). Opening the tab clears its badge; likes that arrive while it is open are seen too.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LikesAndMatchesScreen(
+fun LikesYouScreen(
     repository: MarryMatchRepository,
-    onOpenChat: (MatchItem) -> Unit,
+    onOpenDiscover: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val lang by repository.appLanguage.collectAsState()
-    val matches by repository.matches.collectAsState()
     val likesCount by repository.receivedLikesCount.collectAsState()
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: Matches, 1: Likes You
+    val newLikes by repository.newLikesCount.collectAsState()
 
-    // Fresh matches and "likes you" count every time the tab opens
-    LaunchedEffect(Unit) { repository.loadMatches() }
+    // Fresh count every time the tab opens, then the badge is cleared.
+    LaunchedEffect(Unit) {
+        repository.loadMatches()
+        repository.onLikesViewed()
+    }
+    // A like that arrives while this tab is on screen has been seen as well.
+    LaunchedEffect(newLikes) { if (newLikes > 0) repository.onLikesViewed() }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    TabRow(
-                        selectedTabIndex = selectedTab,
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.fillMaxWidth(0.9f)
-                    ) {
-                        Tab(
-                            selected = selectedTab == 0,
-                            onClick = { selectedTab = 0 },
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(Localization.t("matches", lang))
-                                    if (matches.isNotEmpty()) {
-                                        Badge { Text(matches.size.toString()) }
-                                    }
-                                }
-                            }
-                        )
-                        Tab(
-                            selected = selectedTab == 1,
-                            onClick = { selectedTab = 1 },
-                            text = { Text(Localization.t("likes_you", lang)) }
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Favorite, contentDescription = null, tint = MaterialTheme.extendedColors.accent)
+                        Text(Localization.t("likes_you", lang), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -93,53 +81,96 @@ fun LikesAndMatchesScreen(
             modifier = modifier
                 .fillMaxSize()
                 .padding(padding)
+                .testTag("likes_you_screen")
         ) {
-            if (selectedTab == 0) {
-                // Matches List
-                if (matches.isEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.size(72.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Message, contentDescription = null, tint = MaterialTheme.extendedColors.muted, modifier = Modifier.size(36.dp))
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = Localization.t("no_matches_yet", lang),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.extendedColors.muted,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(matches) { match ->
-                            MatchRow(
-                                match = match,
-                                newMatchText = Localization.t("new_match_say_hello", lang),
-                                lang = lang,
-                                onClick = { onOpenChat(match) }
+            LikesYouBlurredView(lang = lang, likesCount = likesCount, onOpenDiscover = onOpenDiscover)
+        }
+    }
+}
+
+/** "Chats" tab: your matches and conversations, newest first. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatsScreen(
+    repository: MarryMatchRepository,
+    onOpenChat: (MatchItem) -> Unit,
+    onOpenDiscover: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val lang by repository.appLanguage.collectAsState()
+    val matches by repository.matches.collectAsState()
+    val unreadChats = matches.count { it.unread }
+
+    // Fresh list every time the tab opens.
+    LaunchedEffect(Unit) { repository.loadMatches() }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(Localization.t("chats_title", lang), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        if (matches.isNotEmpty()) {
+                            Text(
+                                if (unreadChats > 0) String.format(Localization.t("chats_unread", lang), unreadChats)
+                                else String.format(Localization.t("chats_count", lang), matches.size),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.extendedColors.muted
                             )
                         }
                     }
                 }
+            )
+        }
+    ) { padding ->
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(padding)
+                .testTag("chats_screen")
+        ) {
+            if (matches.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(72.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Message, contentDescription = null, tint = MaterialTheme.extendedColors.muted, modifier = Modifier.size(36.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = Localization.t("no_matches_yet", lang),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.extendedColors.muted,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(onClick = onOpenDiscover) { Text(Localization.t("go_to_discover", lang)) }
+                }
             } else {
-                // Likes You Blurred Teaser
-                LikesYouBlurredView(lang = lang, likesCount = likesCount)
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(matches, key = { it.id }) { match ->
+                        MatchRow(
+                            match = match,
+                            newMatchText = Localization.t("new_match_say_hello", lang),
+                            lang = lang,
+                            onClick = { onOpenChat(match) }
+                        )
+                    }
+                }
             }
         }
     }
@@ -246,7 +277,7 @@ fun MatchRow(
 }
 
 @Composable
-fun LikesYouBlurredView(lang: AppLanguage, likesCount: Int) {
+fun LikesYouBlurredView(lang: AppLanguage, likesCount: Int, onOpenDiscover: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -327,7 +358,7 @@ fun LikesYouBlurredView(lang: AppLanguage, likesCount: Int) {
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Button(
-                    onClick = { /* Preview future feature */ },
+                    onClick = onOpenDiscover,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.extendedColors.accent),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()

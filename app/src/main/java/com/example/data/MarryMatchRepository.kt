@@ -133,6 +133,10 @@ class MarryMatchRepository {
     private val _receivedLikesCount = MutableStateFlow(0)
     val receivedLikesCount: StateFlow<Int> = _receivedLikesCount.asStateFlow()
 
+    // Likes that arrived since the Likes You tab was last opened (the badge on that tab).
+    private val _newLikesCount = MutableStateFlow(0)
+    val newLikesCount: StateFlow<Int> = _newLikesCount.asStateFlow()
+
 
     private val _blockedUserIds = MutableStateFlow<Set<String>>(emptySet())
     val blockedUserIds: StateFlow<Set<String>> = _blockedUserIds.asStateFlow()
@@ -530,9 +534,25 @@ class MarryMatchRepository {
                     theyMet = m.theyMet
                 )
             }
-            _receivedLikesCount.value = api.receivedLikesCount()
+            val likes = api.receivedLikesSummary()
+            _receivedLikesCount.value = likes.total
+            _newLikesCount.value = likes.new
         } catch (e: Throwable) {
             Log.w("MarryMatchRepository", "Could not load matches: ${e.message}")
+        }
+    }
+
+    /** The Likes You tab is on screen: clear its badge now and remember it on the server. */
+    fun onLikesViewed() {
+        if (_newLikesCount.value == 0 && _currentUser.value.id.isBlank()) return
+        _newLikesCount.value = 0
+        val api = _discovery ?: return
+        repositoryScope.launch {
+            try {
+                api.markLikesSeen()
+            } catch (e: Throwable) {
+                Log.w("MarryMatchRepository", "Could not save that likes were seen: ${e.message}")
+            }
         }
     }
 
@@ -674,6 +694,7 @@ class MarryMatchRepository {
         _blockedUserIds.value = emptySet()
         _matches.value = emptyList()
         _receivedLikesCount.value = 0
+        _newLikesCount.value = 0
         _matchCelebration.value = null
         _selfieStatus.value = SelfieStatus(SelfieStatus.NONE)
         _privacy.value = PrivacySettings()

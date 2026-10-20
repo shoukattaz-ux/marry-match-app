@@ -62,6 +62,8 @@ fun MainApp(
     val lang by repository.appLanguage.collectAsState()
     val isConfigured by repository.isConfigured.collectAsState()
     val matchCelebration by repository.matchCelebration.collectAsState()
+    val newLikes by repository.newLikesCount.collectAsState()
+    val unreadChats = repository.matches.collectAsState().value.count { it.unread }
 
     if (!isConfigured) {
         SupabaseNotConfiguredScreen(repository = repository, modifier = modifier)
@@ -216,10 +218,13 @@ fun MainApp(
                                 selected = activeTab == AppTab.LIKES,
                                 onClick = { activeTab = AppTab.LIKES },
                                 icon = {
-                                    Icon(
-                                        imageVector = if (activeTab == AppTab.LIKES) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                        contentDescription = "Likes"
-                                    )
+                                    // Only likes that arrived since the tab was last opened.
+                                    BadgedBox(badge = { if (newLikes > 0) Badge { Text(newLikes.toString()) } }) {
+                                        Icon(
+                                            imageVector = if (activeTab == AppTab.LIKES) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                            contentDescription = "Likes"
+                                        )
+                                    }
                                 },
                                 label = { Text(Localization.t("likes_you", lang)) },
                                 modifier = Modifier.testTag("nav_tab_likes")
@@ -228,10 +233,13 @@ fun MainApp(
                                 selected = activeTab == AppTab.CHATS,
                                 onClick = { activeTab = AppTab.CHATS },
                                 icon = {
-                                    Icon(
-                                        imageVector = if (activeTab == AppTab.CHATS) Icons.Filled.Chat else Icons.Outlined.ChatBubbleOutline,
-                                        contentDescription = "Chats"
-                                    )
+                                    // Chats with messages you have not read yet.
+                                    BadgedBox(badge = { if (unreadChats > 0) Badge { Text(unreadChats.toString()) } }) {
+                                        Icon(
+                                            imageVector = if (activeTab == AppTab.CHATS) Icons.Filled.Chat else Icons.Outlined.ChatBubbleOutline,
+                                            contentDescription = "Chats"
+                                        )
+                                    }
                                 },
                                 label = { Text(if (lang == AppLanguage.EN) "Chats" else "Nachrichten") },
                                 modifier = Modifier.testTag("nav_tab_chats")
@@ -260,21 +268,19 @@ fun MainApp(
                                 )
                             }
                             AppTab.LIKES -> {
-                                LikesAndMatchesScreen(
+                                LikesYouScreen(
                                     repository = repository,
-                                    onOpenChat = { match ->
-                                        activeChatMatch = match
-                                        activeSubScreen = ActiveSubScreen.CHAT_THREAD
-                                    }
+                                    onOpenDiscover = { activeTab = AppTab.DISCOVER }
                                 )
                             }
                             AppTab.CHATS -> {
-                                LikesAndMatchesScreen(
+                                ChatsScreen(
                                     repository = repository,
                                     onOpenChat = { match ->
                                         activeChatMatch = match
                                         activeSubScreen = ActiveSubScreen.CHAT_THREAD
-                                    }
+                                    },
+                                    onOpenDiscover = { activeTab = AppTab.DISCOVER }
                                 )
                             }
                             AppTab.PROFILE -> {

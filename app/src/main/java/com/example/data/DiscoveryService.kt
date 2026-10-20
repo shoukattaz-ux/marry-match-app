@@ -35,6 +35,9 @@ data class DiscoveryPrefs(
     val isDefault: Boolean get() = this == DiscoveryPrefs()
 }
 
+@Serializable
+data class LikesSummary(val total: Int = 0, val new: Int = 0)
+
 /** Today's set: [total] people were picked, [profiles] are the ones not yet liked or passed. */
 data class DailySet(val total: Int, val profiles: List<UserProfile>)
 
@@ -68,6 +71,10 @@ interface DiscoveryApi {
     }
     suspend fun getMatches(): List<MatchSummary>
     suspend fun receivedLikesCount(): Int
+    /** Likes without a match yet, and how many arrived since the Likes You tab was last opened. */
+    suspend fun receivedLikesSummary(): LikesSummary = LikesSummary(total = receivedLikesCount(), new = 0)
+    /** The Likes You tab was opened: its badge starts counting from now. */
+    suspend fun markLikesSeen() {}
     suspend fun loadPrefs(): DiscoveryPrefs
     suspend fun savePrefs(prefs: DiscoveryPrefs)
     suspend fun unmatch(matchId: String)
@@ -214,6 +221,13 @@ class SupabaseDiscoveryService(
 
     override suspend fun receivedLikesCount(): Int =
         client.postgrest.rpc("received_likes_count").decodeAs<Int>()
+
+    override suspend fun receivedLikesSummary(): LikesSummary =
+        client.postgrest.rpc("received_likes_summary").decodeAs<LikesSummary>()
+
+    override suspend fun markLikesSeen() {
+        client.postgrest.rpc("mark_likes_seen")
+    }
 
     override suspend fun loadPrefs(): DiscoveryPrefs {
         val dto = client.from("profiles")
