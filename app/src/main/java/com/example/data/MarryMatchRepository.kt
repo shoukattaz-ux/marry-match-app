@@ -314,12 +314,15 @@ class MarryMatchRepository {
         return try {
             // The server checks every value below again (handle_new_user trigger) and
             // refuses the account if the pass, age, email domain or consents are not valid.
-            client.auth.signUpWith(Email) {
+            // The confirmation link opens our "account verified" page instead of the Site URL default.
+            client.auth.signUpWith(Email, redirectUrl = "${AppConfig.EMAIL_CONFIRMED_URL}?lang=${emailLang()}") {
                 this.email = email.trim()
                 this.password = password.trim()
                 data = buildJsonObject {
                     put("signup_pass", pass)
                     put("birth_date", birthDate)
+                    // Lets the email templates (supabase/templates) write in German or English.
+                    put("lang", emailLang())
                     if (gender.isNotBlank()) put("gender", gender)
                     put("terms_version", AppConfig.TERMS_VERSION)
                     put("privacy_version", AppConfig.PRIVACY_VERSION)
@@ -357,6 +360,9 @@ class MarryMatchRepository {
             }
         }
     }
+
+    /** Language of auth emails and their web pages: the app language. */
+    private fun emailLang(): String = if (_appLanguage.value == AppLanguage.DE) "de" else "en"
 
     suspend fun resendSignupEmail(email: String): Result<Unit> {
         val client = _supabase ?: return Result.failure(
@@ -706,7 +712,8 @@ class MarryMatchRepository {
             IllegalStateException("Supabase is not configured.")
         )
         return try {
-            client.auth.resetPasswordForEmail(email.trim())
+            // The link opens our page for choosing a new password (docs/reset.html).
+            client.auth.resetPasswordForEmail(email.trim(), redirectUrl = "${AppConfig.PASSWORD_RESET_URL}?lang=${emailLang()}")
             Result.success(Unit)
         } catch (e: Throwable) {
             Log.e("MarryMatchRepository", "Supabase reset password failed: ${e.message}", e)

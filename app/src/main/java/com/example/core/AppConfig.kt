@@ -43,6 +43,14 @@ object AppConfig {
 
     const val PROD_REGION = "eu-central (Frankfurt)"
     const val MIN_AGE = 18
+
+    /**
+     * Web pages for links in auth emails (docs/ on GitHub Pages). They must also be listed under
+     * Supabase > Authentication > URL Configuration (Site URL = the verified page, both as Redirect URLs).
+     */
+    const val WEB_BASE_URL = "https://shoukattaz-ux.github.io/marry-match-app"
+    const val EMAIL_CONFIRMED_URL = "$WEB_BASE_URL/verified.html"
+    const val PASSWORD_RESET_URL = "$WEB_BASE_URL/reset.html"
     const val DAILY_PROFILE_LIMIT = 10
     const val APP_VERSION = "1.0.0 (Germany Release)"
 

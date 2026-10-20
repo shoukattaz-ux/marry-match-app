@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>MarryMatch · New password</title>
+<link rel="icon" href="logo.png">
+<style>
+  :root { --bg:#0F1A2A; --card:#16243A; --text:#F1F4F9; --muted:#A9B4C6; --gold:#E9B44C; --blue:#6FA3E0; --err:#F2B8B5; --field:#0F1A2A; --line:#33435C; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#F4F6FA; --card:#FFFFFF; --text:#1D2433; --muted:#5B6578; --gold:#B8862A; --blue:#1E3A5F; --err:#B3261E; --field:#F4F6FA; --line:#CDD4E0; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px;
+         background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; line-height:1.55; }
+  .card { width:100%; max-width:440px; background:var(--card); border-radius:20px; padding:32px 24px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+  .logo { width:76px; height:76px; border-radius:18px; }
+  .brand { font-weight:700; color:var(--blue); margin:10px 0 22px; font-size:18px; }
+  h1 { font-size:22px; margin:0 0 10px; }
+  p { color:var(--muted); margin:0 0 14px; }
+  form { text-align:left; margin-top:8px; }
+  label { display:block; font-size:14px; margin:12px 0 6px; }
+  input { width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--line); background:var(--field); color:var(--text); font-size:16px; }
+  button, .btn { display:inline-block; width:100%; margin-top:18px; padding:13px 22px; border:0; border-radius:12px; background:var(--gold); color:#1D2433;
+                 font-weight:700; font-size:16px; text-decoration:none; text-align:center; cursor:pointer; }
+  button:disabled { opacity:.6; }
+  .error { color:var(--err); font-size:14px; margin-top:10px; min-height:1em; }
+  .lang { margin-top:22px; font-size:13px; text-align:center; }
+  .lang a { color:var(--muted); margin:0 6px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main class="card">
+  <img class="logo" src="logo.png" alt="MarryMatch">
+  <div class="brand">MarryMatch</div>
+
+  <section id="form-view" hidden>
+    <h1 id="t-title"></h1>
+    <p id="t-intro"></p>
+    <form id="form" novalidate>
+      <label for="pw1" id="t-pw1"></label>
+      <input id="pw1" type="password" autocomplete="new-password" minlength="8" required>
+      <label for="pw2" id="t-pw2"></label>
+      <input id="pw2" type="password" autocomplete="new-password" minlength="8" required>
+      <div class="error" id="error" role="alert"></div>
+      <button type="submit" id="save"></button>
+    </form>
+  </section>
+
+  <section id="done-view" hidden>
+    <h1 id="t-done"></h1>
+    <p id="t-done-body"></p>
+    <a class="btn" id="open" href="#" hidden></a>
+  </section>
+
+  <section id="bad-view" hidden>
+    <h1 id="t-bad"></h1>
+    <p id="t-bad-body"></p>
+  </section>
+
+  <div class="lang"><a href="#" data-lang="en">English</a>·<a href="#" data-lang="de">Deutsch</a></div>
+</main>
+<script>
+  // "Forgot password" email link: Supabase signs the person in for this one purpose and sends
+  // them here with a short-lived token after "#". The new password is saved with that token
+  // straight to the MarryMatch server; nothing is stored in the browser.
+  (function () {
+    var SUPABASE_URL = "https://zaixmvhfblgarpjckjhc.supabase.co";
+    // Publishable key: meant for apps and web pages (the same one the Android app contains).
+    var PUBLISHABLE_KEY = "sb_publishable_BPKKyNeKBkM4TISXxyXi4w_Y26xeoVi";
+    var T = {
+      en: {
+        title: "Choose a new password", intro: "Enter a new password for your MarryMatch account.",
+        pw1: "New password", pw2: "Repeat new password", save: "Save password",
+        short: "The password must be at least 8 characters and include a number.",
+        mismatch: "The two passwords are not the same.",
+        failed: "The password could not be saved. Please try again or request a new link in the app.",
+        done: "Your password has been changed", doneBody: "You can now log in to MarryMatch with your new password.",
+        open: "Open MarryMatch",
+        bad: "This link can no longer be used", badBody: "The link has expired or was already used. Open the app, tap “Forgot password” and request a new email."
+      },
+      de: {
+        title: "Neues Passwort wählen", intro: "Geben Sie ein neues Passwort für Ihr MarryMatch-Konto ein.",
+        pw1: "Neues Passwort", pw2: "Neues Passwort wiederholen", save: "Passwort speichern",
+        short: "Das Passwort muss mindestens 8 Zeichen und eine Ziffer enthalten.",
+        mismatch: "Die beiden Passwörter sind nicht gleich.",
+        failed: "Das Passwort konnte nicht gespeichert werden. Bitte versuchen Sie es erneut oder fordern Sie in der App einen neuen Link an.",
+        done: "Ihr Passwort wurde geändert", doneBody: "Sie können sich jetzt mit Ihrem neuen Passwort bei MarryMatch anmelden.",
+        open: "MarryMatch öffnen",
+        bad: "Dieser Link ist nicht mehr gültig", badBody: "Der Link ist abgelaufen oder wurde schon benutzt. Öffnen Sie die App, tippen Sie auf „Passwort vergessen“ und fordern Sie eine neue E-Mail an."
+      }
+    };
+    var query = new URLSearchParams(location.search);
+    var hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+    var token = hash.get("access_token");
+    var failed = !!(hash.get("error") || query.get("error") || hash.get("error_code"));
+    // Keep the token only in memory: take it out of the address bar and history.
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+
+    var lang = query.get("lang") === "de" || query.get("lang") === "en" ? query.get("lang")
+      : ((navigator.language || "").toLowerCase().indexOf("de") === 0 ? "de" : "en");
+    var view = (!token || failed) ? "bad" : "form";
+
+    function $(id) { return document.getElementById(id); }
+    function render() {
+      var t = T[lang];
+      document.documentElement.lang = lang;
+      $("t-title").textContent = t.title; $("t-intro").textContent = t.intro;
+      $("t-pw1").textContent = t.pw1; $("t-pw2").textContent = t.pw2; $("save").textContent = t.save;
+      $("t-done").textContent = t.done; $("t-done-body").textContent = t.doneBody;
+      $("t-bad").textContent = t.bad; $("t-bad-body").textContent = t.badBody;
+      $("form-view").hidden = view !== "form";
+      $("done-view").hidden = view !== "done";
+      $("bad-view").hidden = view !== "bad";
+      if (view === "done" && /Android/i.test(navigator.userAgent)) {
+        $("open").href = "intent://login#Intent;scheme=marrymatch;package=de.marrymatch.app;end";
+        $("open").textContent = t.open;
+        $("open").hidden = false;
+      }
+    }
+    document.querySelectorAll("[data-lang]").forEach(function (a) {
+      a.addEventListener("click", function (e) { e.preventDefault(); lang = a.getAttribute("data-lang"); render(); });
+    });
+
+    $("form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var t = T[lang], pw1 = $("pw1").value, pw2 = $("pw2").value;
+      // Same rule as the app's sign-up screen.
+      if (pw1.length < 8 || !/[0-9]/.test(pw1)) { $("error").textContent = t.short; return; }
+      if (pw1 !== pw2) { $("error").textContent = t.mismatch; return; }
+      $("error").textContent = ""; $("save").disabled = true;
+      fetch(SUPABASE_URL + "/auth/v1/user", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "apikey": PUBLISHABLE_KEY, "Authorization": "Bearer " + token },
+        body: JSON.stringify({ password: pw1 })
+      }).then(function (res) {
+        if (!res.ok) throw new Error(String(res.status));
+        // End this one-time browser login; the app logs in with the new password.
+        fetch(SUPABASE_URL + "/auth/v1/logout?scope=local", {
+          method: "POST", headers: { "apikey": PUBLISHABLE_KEY, "Authorization": "Bearer " + token }
+        }).catch(function () {});
+        token = null; view = "done"; render();
+      }).catch(function (err) {
+        $("save").disabled = false;
+        // 401/403: the link's login has expired in the meantime.
+        if (err.message === "401" || err.message === "403") { view = "bad"; render(); }
+        else $("error").textContent = t.failed;
+      });
+    });
+    render();
+  })();
+</script>
+</body>
+</html>

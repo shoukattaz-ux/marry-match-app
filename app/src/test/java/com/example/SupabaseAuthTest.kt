@@ -98,6 +98,8 @@ class SupabaseAuthTest {
             "https://zaixmvhfblgarpjckjhc.supabase.co/functions/v1/location-switch",
             com.example.core.LocationGateService.LOCATION_SWITCH_URL
         )
+        assertEquals("https://shoukattaz-ux.github.io/marry-match-app/verified.html", com.example.core.AppConfig.EMAIL_CONFIRMED_URL)
+        assertEquals("https://shoukattaz-ux.github.io/marry-match-app/reset.html", com.example.core.AppConfig.PASSWORD_RESET_URL)
 
         // 2. Initial user must not have any hardcoded city
         assertEquals("", repository.currentUser.value.city)

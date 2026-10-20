@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>MarryMatch · Email confirmed</title>
+<link rel="icon" href="logo.png">
+<style>
+  :root { --bg:#0F1A2A; --card:#16243A; --text:#F1F4F9; --muted:#A9B4C6; --gold:#E9B44C; --blue:#6FA3E0; --err:#F2B8B5; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#F4F6FA; --card:#FFFFFF; --text:#1D2433; --muted:#5B6578; --gold:#B8862A; --blue:#1E3A5F; --err:#B3261E; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px;
+         background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; line-height:1.55; }
+  .card { width:100%; max-width:440px; background:var(--card); border-radius:20px; padding:32px 24px; text-align:center;
+          box-shadow:0 10px 30px rgba(0,0,0,.25); }
+  .logo { width:76px; height:76px; border-radius:18px; }
+  .brand { font-weight:700; letter-spacing:.3px; color:var(--blue); margin:10px 0 22px; font-size:18px; }
+  .icon { width:64px; height:64px; margin:0 auto 14px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:34px; }
+  .ok .icon { background:rgba(111,163,224,.18); color:var(--blue); }
+  .bad .icon { background:rgba(242,184,181,.18); color:var(--err); }
+  h1 { font-size:22px; margin:0 0 10px; }
+  p { color:var(--muted); margin:0 0 14px; }
+  .btn { display:inline-block; margin-top:10px; padding:13px 22px; border-radius:12px; background:var(--gold); color:#1D2433;
+         font-weight:700; text-decoration:none; }
+  .hint { font-size:13px; margin-top:18px; }
+  .lang { margin-top:22px; font-size:13px; }
+  .lang a { color:var(--muted); margin:0 6px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main class="card" id="card">
+  <img class="logo" src="logo.png" alt="MarryMatch">
+  <div class="brand">MarryMatch</div>
+  <div class="icon" id="icon" aria-hidden="true">✓</div>
+  <h1 id="title"></h1>
+  <p id="body"></p>
+  <a class="btn" id="open" href="#" hidden></a>
+  <p class="hint" id="hint"></p>
+  <div class="lang"><a href="?lang=en">English</a>·<a href="?lang=de">Deutsch</a></div>
+</main>
+<noscript><p style="text-align:center">Your email address is confirmed. Please open the MarryMatch app and log in.</p></noscript>
+<script>
+  // Supabase sends people here after they tap the link in the confirmation email.
+  // The account is already confirmed at this point; this page only says so.
+  (function () {
+    var T = {
+      en: {
+        okTitle: "Your account has been verified",
+        okBody: "Thank you! Your email address is confirmed. You can now open MarryMatch and log in.",
+        badTitle: "This link can no longer be used",
+        badBody: "The link has expired or was already used. If you confirmed your email before, simply log in. Otherwise open the app and request a new confirmation email.",
+        open: "Open MarryMatch",
+        hint: "You can close this page.",
+        hintDesktop: "Open the MarryMatch app on your phone and log in."
+      },
+      de: {
+        okTitle: "Ihr Konto wurde bestätigt",
+        okBody: "Vielen Dank! Ihre E-Mail-Adresse ist bestätigt. Sie können MarryMatch jetzt öffnen und sich anmelden.",
+        badTitle: "Dieser Link ist nicht mehr gültig",
+        badBody: "Der Link ist abgelaufen oder wurde schon benutzt. Wenn Sie Ihre E-Mail schon bestätigt haben, melden Sie sich einfach an. Sonst öffnen Sie die App und fordern eine neue Bestätigungs-E-Mail an.",
+        open: "MarryMatch öffnen",
+        hint: "Sie können diese Seite schließen.",
+        hintDesktop: "Öffnen Sie die MarryMatch-App auf Ihrem Telefon und melden Sie sich an."
+      }
+    };
+    var query = new URLSearchParams(location.search);
+    var hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+    var chosen = query.get("lang");
+    var lang = chosen === "de" || chosen === "en" ? chosen
+      : ((navigator.language || "").toLowerCase().indexOf("de") === 0 ? "de" : "en");
+    var t = T[lang];
+    document.documentElement.lang = lang;
+
+    var failed = !!(hash.get("error") || query.get("error") || hash.get("error_code") || query.get("error_code"));
+
+    // The link carries a login token after "#": remove it from the address bar and history at once.
+    if (location.hash || query.has("code") || query.has("error")) {
+      history.replaceState(null, "", location.pathname + "?lang=" + lang);
+    }
+
+    document.getElementById("card").className = "card " + (failed ? "bad" : "ok");
+    document.getElementById("icon").textContent = failed ? "!" : "✓";
+    document.getElementById("title").textContent = failed ? t.badTitle : t.okTitle;
+    document.getElementById("body").textContent = failed ? t.badBody : t.okBody;
+    document.title = "MarryMatch · " + (failed ? t.badTitle : t.okTitle);
+
+    var android = /Android/i.test(navigator.userAgent);
+    var open = document.getElementById("open");
+    if (android) {
+      // Opens the installed app (marrymatch://verified); without the app, Chrome opens the Play Store listing.
+      open.href = "intent://verified#Intent;scheme=marrymatch;package=de.marrymatch.app;end";
+      open.textContent = t.open;
+      open.hidden = false;
+      document.getElementById("hint").textContent = t.hint;
+    } else {
+      document.getElementById("hint").textContent = t.hintDesktop;
+    }
+  })();
+</script>
+</body>
+</html>
