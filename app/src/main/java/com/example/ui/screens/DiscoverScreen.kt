@@ -36,6 +36,7 @@ import com.example.core.Localization
 import com.example.data.DiscoveryPrefs
 import com.example.data.MarryMatchRepository
 import com.example.model.MatchTraits
+import com.example.model.PhotoFocus
 import com.example.model.UserProfile
 import com.example.ui.components.*
 import com.example.ui.theme.extendedColors
@@ -337,7 +338,8 @@ private fun FiltersDialog(
 
 /**
  * One profile, Hinge style: photos and prompts in turn, each with a heart to like that exact
- * item (with an optional comment). Like, Pass and Report stay at the bottom.
+ * item (with an optional comment). Like, Pass and Report stay at the bottom. With [preview] the
+ * member sees their own profile as others do: nothing can be tapped and the buttons are hidden.
  */
 @Composable
 fun ProfileHingeCard(
@@ -345,6 +347,7 @@ fun ProfileHingeCard(
     lang: AppLanguage,
     enabled: Boolean,
     myInterests: List<String> = emptyList(),
+    preview: Boolean = false,
     onPass: () -> Unit,
     onLike: () -> Unit,
     onLikeTarget: (LikeTarget) -> Unit,
@@ -364,16 +367,16 @@ fun ProfileHingeCard(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 90.dp)
+                .padding(bottom = if (preview) 16.dp else 90.dp)
         ) {
             Spacer(Modifier.height(10.dp))
 
             // Main photo with name, age, city and badges
-            Box(modifier = Modifier.fillMaxWidth().height(420.dp).clip(RoundedCornerShape(16.dp))) {
-                AsyncImage(
+            Box(modifier = Modifier.fillMaxWidth().height(CardPhotoFrame.MAIN_HEIGHT).clip(RoundedCornerShape(16.dp))) {
+                FocusedPhoto(
                     model = profile.photos.firstOrNull(),
+                    focus = profile.focusOf(0),
                     contentDescription = profile.displayName,
-                    contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
                 Box(
@@ -447,7 +450,7 @@ fun ProfileHingeCard(
             InterestsCard(profile.interests, myInterests, t)
 
             if (profile.photos.size > 1) {
-                ExtraPhoto(profile.photos[1], enabled) { onLikeTarget(photoTarget(1)) }
+                ExtraPhoto(profile.photos[1], profile.focusOf(1), enabled) { onLikeTarget(photoTarget(1)) }
             }
             if (profile.prompts.size > 1) {
                 PromptCard(prompt = profile.prompts[1], isGerman = isGerman, onLikeClick = { onLikeTarget(promptTarget(1)) })
@@ -479,7 +482,7 @@ fun ProfileHingeCard(
             val morePhotos = profile.photos.drop(2)
             val morePrompts = profile.prompts.drop(3)
             for (i in 0 until maxOf(morePhotos.size, morePrompts.size)) {
-                morePhotos.getOrNull(i)?.let { url -> ExtraPhoto(url, enabled) { onLikeTarget(photoTarget(i + 2)) } }
+                morePhotos.getOrNull(i)?.let { url -> ExtraPhoto(url, profile.focusOf(i + 2), enabled) { onLikeTarget(photoTarget(i + 2)) } }
                 morePrompts.getOrNull(i)?.let { prompt ->
                     PromptCard(prompt = prompt, isGerman = isGerman, onLikeClick = { onLikeTarget(promptTarget(i + 3)) })
                     Spacer(Modifier.height(14.dp))
@@ -489,8 +492,8 @@ fun ProfileHingeCard(
             Spacer(Modifier.height(30.dp))
         }
 
-        // Pass, Like and Report
-        Surface(
+        // Pass, Like and Report (not in the own-profile preview)
+        if (!preview) Surface(
             shape = RoundedCornerShape(32.dp),
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp,
@@ -560,9 +563,9 @@ private fun BlurredPhotosBadge(lang: AppLanguage, modifier: Modifier = Modifier)
 }
 
 @Composable
-private fun ExtraPhoto(url: String, enabled: Boolean, onHeart: () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().height(380.dp).clip(RoundedCornerShape(16.dp))) {
-        AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+private fun ExtraPhoto(url: String, focus: PhotoFocus, enabled: Boolean, onHeart: () -> Unit) {
+    Box(modifier = Modifier.fillMaxWidth().height(CardPhotoFrame.EXTRA_HEIGHT).clip(RoundedCornerShape(16.dp))) {
+        FocusedPhoto(model = url, focus = focus, contentDescription = null, modifier = Modifier.fillMaxSize())
         PhotoHeart(enabled, Modifier.align(Alignment.TopEnd), onHeart)
     }
     Spacer(Modifier.height(14.dp))

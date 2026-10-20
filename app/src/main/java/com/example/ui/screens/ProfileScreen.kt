@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Phone
@@ -21,6 +24,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +37,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.core.AppConfig
 import com.example.core.AppLanguage
@@ -40,10 +46,10 @@ import com.example.core.Localization
 import com.example.core.ProfileStrength
 import com.example.model.MatchTraits
 import kotlinx.coroutines.launch
-import com.example.ui.components.AvatarAdjustDialog
 import com.example.ui.components.FocusedPhoto
 import com.example.data.MarryMatchRepository
 import com.example.data.SelfieStatus
+import com.example.data.asSeenByOthers
 import com.example.ui.components.*
 import com.example.ui.theme.extendedColors
 
@@ -66,31 +72,71 @@ fun ProfileScreen(
     LaunchedEffect(user.id) { if (user.id.isNotBlank()) repository.loadSelfieStatus() }
 
     var showPhoneFlow by remember { mutableStateOf(false) }
-    var showAdjustPhoto by remember { mutableStateOf(false) }
+    // Which photo is being adjusted (0 = main photo), or null.
+    var adjustIndex by remember { mutableStateOf<Int?>(null) }
     var adjustSaving by remember { mutableStateOf(false) }
     var adjustError by remember { mutableStateOf<String?>(null) }
     val adjustScope = rememberCoroutineScope()
+    var showPreview by remember { mutableStateOf(false) }
+    val privacy by repository.privacy.collectAsState()
+    LaunchedEffect(showPreview) { if (showPreview) repository.loadPrivacy() }
 
-    if (showAdjustPhoto) {
-        AvatarAdjustDialog(
-            photo = user.photos.firstOrNull(),
-            initial = user.mainPhotoFocus,
+    adjustIndex?.takeIf { it in user.photos.indices }?.let { index ->
+        PhotoAdjustDialog(
+            photo = user.photos[index],
+            initial = user.focusOf(index),
             lang = lang,
+            isMain = index == 0,
+            caption = "${user.displayName}, ${user.age}",
             saving = adjustSaving,
             errorText = adjustError,
-            onDismiss = { showAdjustPhoto = false; adjustError = null },
+            onDismiss = { adjustIndex = null; adjustError = null },
             onSave = { focus ->
                 adjustSaving = true
                 adjustError = null
                 adjustScope.launch {
-                    repository.saveMainPhotoFocus(focus)
-                        .onSuccess { showAdjustPhoto = false }
+                    repository.savePhotoFocus(index, focus)
+                        .onSuccess { adjustIndex = null }
                         .onFailure { adjustError = Localization.t("avatar_save_failed", lang) }
                     adjustSaving = false
                 }
             },
-            onChangePhotos = { showAdjustPhoto = false; onOpenProfileCreation() }
+            onChangePhotos = { adjustIndex = null; onOpenProfileCreation() }
         )
+    }
+
+    if (showPreview) {
+        // Your own card exactly as members see it on Discover; nothing on it can be tapped.
+        Dialog(onDismissRequest = { showPreview = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { showPreview = false }, modifier = Modifier.testTag("profile_preview_close")) {
+                            Icon(Icons.Default.Close, contentDescription = Localization.t("close", lang))
+                        }
+                        Column {
+                            Text(Localization.t("profile_preview_title", lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(Localization.t("profile_preview_hint", lang), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+                        }
+                    }
+                    Box(modifier = Modifier.weight(1f).testTag("profile_preview")) {
+                        ProfileHingeCard(
+                            profile = user.asSeenByOthers(privacy),
+                            lang = lang,
+                            enabled = false,
+                            preview = true,
+                            onPass = {},
+                            onLike = {},
+                            onLikeTarget = {},
+                            onReport = {}
+                        )
+                    }
+                }
+            }
+        }
     }
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
@@ -141,7 +187,7 @@ fun ProfileScreen(
                         modifier = Modifier
                             .size(100.dp)
                             .clickable {
-                                if (user.photos.isNotEmpty()) showAdjustPhoto = true else onOpenProfileCreation()
+                                if (user.photos.isNotEmpty()) adjustIndex = 0 else onOpenProfileCreation()
                             }
                             .testTag("profile_avatar")
                     ) {
@@ -153,7 +199,7 @@ fun ProfileScreen(
                         ) {
                             FocusedPhoto(
                                 model = user.photos.firstOrNull() ?: "",
-                                focus = user.mainPhotoFocus,
+                                focus = user.focusOf(0),
                                 contentDescription = user.displayName,
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -386,21 +432,63 @@ fun ProfileScreen(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
+            Text(
+                Localization.t("profile_photos_hint", lang),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.extendedColors.muted
+            )
 
+            // Shaped and framed like on a Discover card; tap one to move or zoom it.
             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(user.photos) { photoUrl ->
+                itemsIndexed(user.photos) { index, photoUrl ->
                     Box(
                         modifier = Modifier
-                            .size(110.dp, 150.dp)
+                            .height(150.dp)
+                            .aspectRatio(if (index == 0) CardPhotoFrame.MAIN_ASPECT else CardPhotoFrame.EXTRA_ASPECT)
                             .clip(RoundedCornerShape(12.dp))
+                            .clickable { adjustIndex = index }
+                            .testTag("profile_photo_$index")
                     ) {
-                        AsyncImage(
+                        FocusedPhoto(
                             model = photoUrl,
+                            focus = user.focusOf(index),
                             contentDescription = null,
-                            contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.6f),
+                            modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(26.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Crop, contentDescription = Localization.t("photo_adjust_title", lang), tint = Color.White, modifier = Modifier.size(15.dp))
+                            }
+                        }
+                        if (index == 0) {
+                            Text(
+                                Localization.t("main_photo", lang),
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .background(Color.Black.copy(alpha = 0.55f))
+                                    .padding(vertical = 4.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
+                }
+            }
+            if (user.photos.isNotEmpty()) {
+                OutlinedButton(
+                    onClick = { showPreview = true },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("profile_preview_btn")
+                ) {
+                    Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(Localization.t("profile_preview_button", lang))
                 }
             }
         }

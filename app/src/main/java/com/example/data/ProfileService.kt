@@ -82,7 +82,7 @@ data class ProfilePhoto(
     val storagePath: String,
     val url: String,
     val position: Int,
-    /** How the round avatar shows this photo when it is the main one. */
+    /** How this photo sits in the avatar circle and on the Discover card. */
     val focus: PhotoFocus = PhotoFocus()
 )
 
@@ -167,8 +167,10 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
         jpeg: ByteArray,
         position: Int,
         thumb: ByteArray? = null,
-        blurred: ByteArray? = null
+        blurred: ByteArray? = null,
+        focus: PhotoFocus = PhotoFocus()
     ): ProfilePhoto {
+        val f = focus.clamped()
         val path = "$userId/${UUID.randomUUID()}.jpg"
         photoBucket.upload(path, jpeg) {
             contentType = ContentType.Image.JPEG
@@ -191,14 +193,17 @@ class ProfileService(private val client: SupabaseClient, private val photoLinks:
                     put("user_id", userId)
                     put("storage_path", path)
                     put("position", position)
-                }) { select(Columns.list("id", "storage_path", "position")) }
+                    put("focus_x", f.x)
+                    put("focus_y", f.y)
+                    put("zoom", f.zoom)
+                }) { select(Columns.list("id", "storage_path", "position", "focus_x", "focus_y", "zoom")) }
                 .decodeSingle<PhotoRow>()
         } catch (e: Throwable) {
             // Do not leave an orphaned file behind when the row is refused (e.g. 6-photo limit).
             runCatching { photoBucket.delete(listOf(path, thumbPathFor(path), blurPathFor(path))) }
             throw e
         }
-        return ProfilePhoto(row.id, row.storagePath, photoLinks.url(row.storagePath).orEmpty(), row.position)
+        return ProfilePhoto(row.id, row.storagePath, photoLinks.url(row.storagePath).orEmpty(), row.position, row.focus)
     }
 
     suspend fun deletePhoto(photo: ProfilePhoto) {

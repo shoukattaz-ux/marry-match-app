@@ -5,9 +5,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
+import android.graphics.Rect
 import android.media.ExifInterface
 import android.net.Uri
 import android.os.Build
+import com.example.model.PhotoFocus
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -24,7 +26,14 @@ import kotlin.math.roundToInt
  * [thumb] is a small copy for lists (match list, chat), so those screens download far less data.
  * [blurred] is a strongly blurred copy, shown to non-matches when "blur my photos" is on.
  */
-class PreparedPhoto(val jpeg: ByteArray, val faceCount: Int?, val thumb: ByteArray? = null, val blurred: ByteArray? = null)
+class PreparedPhoto(
+    val jpeg: ByteArray,
+    val faceCount: Int?,
+    val thumb: ByteArray? = null,
+    val blurred: ByteArray? = null,
+    /** Framing centred on the largest face, or null when no face was found. */
+    val faceFocus: PhotoFocus? = null
+)
 
 /**
  * Prepares profile photos on the phone before upload (Phase 3 photo rules):
@@ -44,13 +53,15 @@ object PhotoProcessor {
     /** [withThumbnail] also makes the small list copy and the blurred copy (profile photos; selfies need neither). */
     suspend fun prepare(context: Context, uri: Uri, withThumbnail: Boolean = false): PreparedPhoto = withContext(Dispatchers.IO) {
         val bitmap = decodeUpright(context, uri)
-        val faces = countFaces(bitmap)
+        val faces = detectFaces(bitmap)
+        val focus = faces?.maxByOrNull { it.width() * it.height() }
+            ?.let { PhotoFocus.forFace(it.exactCenterX() / bitmap.width, it.exactCenterY() / bitmap.height) }
         val out = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
         val thumb = if (withThumbnail) thumbnail(bitmap) else null
         val blurred = if (withThumbnail) blurred(bitmap) else null
         bitmap.recycle()
-        PreparedPhoto(out.toByteArray(), faces, thumb, blurred)
+        PreparedPhoto(out.toByteArray(), faces?.size, thumb, blurred, focus)
     }
 
     /** Blurred copy of an already stored JPEG (photos uploaded before blurring existed). */
@@ -94,8 +105,10 @@ object PhotoProcessor {
         countFaces(bitmap).also { bitmap.recycle() }
     }
 
-    /** Number of faces, or null when the detector is unavailable (then the photo is not blocked). */
-    private suspend fun countFaces(bitmap: Bitmap): Int? = suspendCancellableCoroutine { cont ->
+    private suspend fun countFaces(bitmap: Bitmap): Int? = detectFaces(bitmap)?.size
+
+    /** Face boxes in [bitmap] pixels, or null when the detector is unavailable (then the photo is not blocked). */
+    private suspend fun detectFaces(bitmap: Bitmap): List<Rect>? = suspendCancellableCoroutine { cont ->
         val detector = FaceDetection.getClient(
             FaceDetectorOptions.Builder()
                 .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
@@ -104,7 +117,7 @@ object PhotoProcessor {
         detector.process(InputImage.fromBitmap(bitmap, 0))
             .addOnSuccessListener { faces ->
                 detector.close()
-                if (cont.isActive) cont.resume(faces.size)
+                if (cont.isActive) cont.resume(faces.map { it.boundingBox })
             }
             .addOnFailureListener {
                 detector.close()

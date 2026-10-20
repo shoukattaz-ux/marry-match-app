@@ -12,6 +12,7 @@ import com.example.data.ProfilePhoto
 import com.example.data.ProfileService
 import com.example.data.PromptAnswer
 import com.example.model.MatchTraits
+import com.example.model.PhotoFocus
 import com.example.model.Trait
 import com.example.model.PromptCatalog
 import kotlinx.coroutines.Dispatchers
@@ -341,7 +342,10 @@ class OnboardingViewModel(
                     // The first photo becomes the main one, which must show exactly one face.
                     val faceError = if (_state.value.photos.isEmpty()) faceErrorKey(prepared.faceCount) else null
                     if (faceError == null) {
-                        val photo = service.uploadPhoto(userId, prepared.jpeg, _state.value.photos.size, prepared.thumb, prepared.blurred)
+                        val photo = service.uploadPhoto(
+                            userId, prepared.jpeg, _state.value.photos.size, prepared.thumb, prepared.blurred,
+                            focus = prepared.faceFocus ?: PhotoFocus()
+                        )
                         _state.update {
                             it.copy(photos = it.photos + photo, faceCounts = it.faceCounts + (photo.id to prepared.faceCount))
                         }

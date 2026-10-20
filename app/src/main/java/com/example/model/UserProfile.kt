@@ -53,8 +53,12 @@ data class UserProfile(
     /** A chaperone (family member) reads this member's chats with matches. */
     val chaperoned: Boolean = false,
     /** How the round avatar shows the main photo (set with "Adjust photo"). */
-    val mainPhotoFocus: PhotoFocus = PhotoFocus()
-)
+    val mainPhotoFocus: PhotoFocus = PhotoFocus(),
+    /** Framing of each of [photos], same order (avatar, Discover card and gallery). */
+    val photoFocus: List<PhotoFocus> = emptyList()
+) {
+    fun focusOf(index: Int): PhotoFocus = photoFocus.getOrNull(index) ?: if (index == 0) mainPhotoFocus else PhotoFocus()
+}
 
 /**
  * A question users can answer on their profile; [key] is what the database stores. [hintEn] /

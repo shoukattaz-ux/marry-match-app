@@ -113,7 +113,7 @@ private data class CardDto(
 )
 
 @Serializable
-private data class CardPhotoDto(val id: String, val path: String)
+private data class CardPhotoDto(val id: String, val path: String, val focus: PhotoFocus? = null)
 
 @Serializable
 private data class CardPromptDto(val id: String, val key: String, val answer: String)
@@ -262,7 +262,7 @@ class SupabaseDiscoveryService(
 
     private suspend fun CardDto.toUserProfile(): UserProfile {
         // Keep ids and links aligned; a photo the server refuses to sign is left out of both.
-        val signed = photos.mapNotNull { ph -> photoLinks.url(shownPath(ph.path))?.let { ph.id to it } }
+        val signed = photos.mapNotNull { ph -> photoLinks.url(shownPath(ph.path))?.let { url -> ph to url } }
         return UserProfile(
             id = id,
             displayName = displayName,
@@ -282,7 +282,9 @@ class SupabaseDiscoveryService(
             heightCm = heightCm ?: 0,
             onboardingDone = true,
             photos = signed.map { it.second },
-            photoIds = signed.map { it.first },
+            photoIds = signed.map { it.first.id },
+            photoFocus = signed.map { (it.first.focus ?: PhotoFocus()).clamped() },
+            mainPhotoFocus = signed.firstOrNull()?.first?.focus?.clamped() ?: PhotoFocus(),
             prompts = prompts.map { p ->
                 val question = PromptCatalog.find(p.key)
                 ProfilePrompt(
