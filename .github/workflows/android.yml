@@ -1,5 +1,7 @@
 # Builds the app and runs the unit tests on every push and pull request, and offers the
-# debug APK for download (Actions run → Artifacts → marrymatch-debug-apk).
+# debug APK for download (Actions run → Artifacts → marrymatch-debug-apk). After a push the
+# APK is also on the Releases page as "Latest test build", a direct link that works on a phone:
+# https://github.com/shoukattaz-ux/marry-match-app/releases/download/latest-debug/MarryMatch-debug.apk
 name: Android build
 
 on:
@@ -12,7 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  # write: only to replace the "Latest test build" release below (never on pull requests).
+  contents: write
 
 jobs:
   build:
@@ -60,6 +63,20 @@ jobs:
           name: marrymatch-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
+
+      # One release, replaced by every successful push, so the download link never changes.
+      - name: Publish APK as "Latest test build"
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/*.apk MarryMatch-debug.apk
+          gh release delete latest-debug --yes --cleanup-tag || true
+          gh release create latest-debug MarryMatch-debug.apk \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Latest test build" \
+            --notes "Debug APK from branch ${GITHUB_REF_NAME}, commit ${GITHUB_SHA::7}. On the phone: tap MarryMatch-debug.apk below, then open the download to install."
 
       - name: Upload test reports
         if: failure()
