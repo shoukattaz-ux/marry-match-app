@@ -1,6 +1,12 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -18,16 +24,22 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.core.AppLanguage
 import com.example.core.Localization
 import com.example.data.AuthState
@@ -35,132 +47,242 @@ import com.example.data.MarryMatchRepository
 import com.example.ui.components.MarryPrimaryButton
 import com.example.ui.components.MarrySecondaryButton
 import com.example.ui.theme.extendedColors
+import kotlinx.coroutines.delay
 
+/** The photos of the welcome carousel with their caption keys and how each is cropped. */
+private data class WelcomeSlide(val image: Int, val captionKey: String, val alignment: Alignment)
+
+private val WELCOME_SLIDES = listOf(
+    WelcomeSlide(R.drawable.welcome_family_park, "welcome_slide_values", BiasAlignment(0.05f, -0.2f)),
+    WelcomeSlide(R.drawable.welcome_family_beach, "welcome_slide_story", BiasAlignment(-0.05f, 0f)),
+    WelcomeSlide(R.drawable.welcome_family_nature, "welcome_slide_family", BiasAlignment(0.27f, -0.3f))
+)
+
+/** Time each photo stays before the carousel moves on by itself. */
+private const val SLIDE_MILLIS = 4500L
+
+/**
+ * First screen: a photo carousel at the top (it slides by itself and can be swiped), then the
+ * app name, promise and trust points, and the two buttons at the bottom. The layout fills any
+ * screen height; on small screens or with large text it scrolls instead of cutting anything off.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WelcomeScreen(
     repository: MarryMatchRepository,
     modifier: Modifier = Modifier
 ) {
     val lang by repository.appLanguage.collectAsState()
+    val t: (String) -> String = { Localization.t(it, lang) }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.surface,
-                        MaterialTheme.colorScheme.background
-                    )
-                )
-            )
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(24.dp)
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        // Language switcher in top right corner
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .clickable { repository.toggleLanguage() }
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Language,
-                contentDescription = "Switch language",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
-            Text(
-                text = if (lang == AppLanguage.EN) "DE (Deutsch)" else "EN (English)",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-
-        // Center content
+        val screenHeight = maxHeight
+        // The photos take a bit under half of the screen: big on tall phones, never crowding the buttons.
+        val carouselHeight = (screenHeight * 0.46f).coerceIn(240.dp, 480.dp)
         Column(
             modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth(),
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = screenHeight),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Emblem: Two golden marriage rings and union heart
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                shadowElevation = 8.dp,
-                modifier = Modifier.size(90.dp)
+            WelcomeCarousel(
+                height = carouselHeight,
+                t = t,
+                languageLabel = if (lang == AppLanguage.EN) "DE · Deutsch" else "EN · English",
+                onToggleLanguage = repository::toggleLanguage
+            )
+
+            // Text and buttons; on tablets and in landscape they keep a readable width.
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 520.dp)
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Box(contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // The logo overlaps the bottom edge of the photos a little.
+                    Image(
+                        painter = painterResource(R.drawable.brand_logo),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .offset(y = (-36).dp)
+                            .size(72.dp)
+                            .shadow(10.dp, RoundedCornerShape(18.dp))
+                            .clip(RoundedCornerShape(18.dp))
+                    )
                     Text(
-                        text = "💍",
-                        fontSize = 42.sp
+                        text = t("app_name"),
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.offset(y = (-24).dp)
+                    )
+                    Column(
+                        modifier = Modifier.offset(y = (-16).dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = t("tagline"),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = t("welcome_promise"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.extendedColors.muted,
+                            textAlign = TextAlign.Center
+                        )
+                        // Wraps onto two lines on narrow screens instead of squeezing.
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                        ) {
+                            TrustPill(icon = "🇩🇪", text = if (lang == AppLanguage.EN) "Germany Only" else "Nur Deutschland")
+                            TrustPill(icon = "✓", text = if (lang == AppLanguage.EN) "Selfie Verified" else "Verifiziert")
+                            TrustPill(icon = "🔒", text = if (lang == AppLanguage.EN) "EU Hosted" else "DSGVO-sicher")
+                        }
+                    }
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    MarryPrimaryButton(
+                        text = t("create_account"),
+                        onClick = { repository.setAuthState(AuthState.LOCATION_GATE) },
+                        testTag = "welcome_create_account_btn"
+                    )
+                    MarrySecondaryButton(
+                        text = t("log_in"),
+                        onClick = { repository.setAuthState(AuthState.LOGIN) },
+                        testTag = "welcome_login_btn"
                     )
                 }
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(24.dp))
+/**
+ * Full-width photos under the status bar. They move on every few seconds (endlessly, in a loop),
+ * pause while a finger is on them, and fade into the page at the bottom. The language switch sits
+ * on top of the photos.
+ */
+@Composable
+private fun WelcomeCarousel(
+    height: Dp,
+    t: (String) -> String,
+    languageLabel: String,
+    onToggleLanguage: () -> Unit
+) {
+    val count = WELCOME_SLIDES.size
+    // A very long row of pages that repeats the photos, so swiping and sliding never hit an end.
+    val start = (Int.MAX_VALUE / 2).let { it - it % count }
+    val pager = rememberPagerState(initialPage = start) { Int.MAX_VALUE }
+    val dragged by pager.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(pager.settledPage, dragged) {
+        if (dragged) return@LaunchedEffect
+        delay(SLIDE_MILLIS)
+        pager.animateScrollToPage(pager.currentPage + 1, animationSpec = tween(durationMillis = 700))
+    }
+    val background = MaterialTheme.colorScheme.background
 
-            Text(
-                text = Localization.t("app_name", lang),
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .testTag("welcome_carousel")
+    ) {
+        HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+            val slide = WELCOME_SLIDES[page % count]
+            Image(
+                painter = painterResource(slide.image),
+                contentDescription = t("welcome_photo_desc"),
+                contentScale = ContentScale.Crop,
+                alignment = slide.alignment,
+                modifier = Modifier.fillMaxSize()
             )
+        }
+        // Darker top so the clock and the language switch stay readable on bright photos.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(110.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent)))
+        )
+        // The photo fades into the page below.
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(height * 0.45f)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, background.copy(alpha = 0.85f), background)))
+        )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = Localization.t("tagline", lang),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.secondary,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = Localization.t("welcome_promise", lang),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.extendedColors.muted,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Trust highlights
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                TrustPill(icon = "🇩🇪", text = if (lang == AppLanguage.EN) "Germany Only" else "Nur Deutschland")
-                TrustPill(icon = "✓", text = if (lang == AppLanguage.EN) "Selfie Verified" else "Verifiziert")
-                TrustPill(icon = "🔒", text = if (lang == AppLanguage.EN) "EU Hosted" else "DSGVO-sicher")
-            }
+        // Language switch
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(12.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color.Black.copy(alpha = 0.35f))
+                .clickable(onClick = onToggleLanguage)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .testTag("welcome_language_btn"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(Icons.Default.Language, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+            Text(languageLabel, style = MaterialTheme.typography.labelLarge, color = Color.White)
         }
 
-        // Bottom action buttons
+        // Caption of the current photo and the page dots, above the fade.
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(bottom = 46.dp)
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            MarryPrimaryButton(
-                text = Localization.t("create_account", lang),
-                onClick = { repository.setAuthState(AuthState.LOCATION_GATE) },
-                testTag = "welcome_create_account_btn"
+            Text(
+                text = t(WELCOME_SLIDES[pager.currentPage % count].captionKey),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.6f), blurRadius = 8f)
+                ),
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
             )
-
-            MarrySecondaryButton(
-                text = Localization.t("log_in", lang),
-                onClick = { repository.setAuthState(AuthState.LOGIN) },
-                testTag = "welcome_login_btn"
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                repeat(count) { i ->
+                    val selected = pager.currentPage % count == i
+                    val width by animateDpAsState(if (selected) 22.dp else 8.dp, label = "dot")
+                    Box(
+                        Modifier
+                            .height(8.dp)
+                            .width(width)
+                            .clip(CircleShape)
+                            .background(if (selected) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f))
+                    )
+                }
+            }
         }
     }
 }
