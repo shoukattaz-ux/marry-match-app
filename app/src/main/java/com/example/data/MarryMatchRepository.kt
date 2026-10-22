@@ -203,7 +203,10 @@ class MarryMatchRepository {
                     install(Postgrest)
                     install(Storage)
                     install(Realtime)
+                    // Renews an expiring login before a call and retries once after a 401 (FreshSession).
+                    httpConfig { install(FreshSession.plugin) }
                 }
+                FreshSession.supabase = _supabase
                 val photoLinks = PhotoUrlSigner.forBucket(_supabase!!, ProfileService.PHOTO_BUCKET)
                 _photoLinks = photoLinks
                 _profileService = ProfileService(_supabase!!, photoLinks)
