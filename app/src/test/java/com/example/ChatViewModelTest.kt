@@ -51,6 +51,16 @@ private class FakeChatApi(history: List<ChatMessage>) : ChatApi {
         meetings += feeling
         return otherConfirmed
     }
+
+    var savedTheme: com.example.data.ChatThemeState? = null
+    val themeLive = MutableSharedFlow<com.example.data.ChatThemeState>()
+    var failTheme = false
+    override suspend fun chatTheme(matchId: String) = savedTheme
+    override suspend fun setChatTheme(matchId: String, theme: String): com.example.data.ChatThemeState {
+        if (failTheme) throw IllegalStateException("offline")
+        return com.example.data.ChatThemeState(matchId, theme, ME).also { savedTheme = it }
+    }
+    override fun themeChanges(matchId: String): Flow<com.example.data.ChatThemeState> = themeLive
 }
 
 private const val ME = "me"
@@ -254,5 +264,37 @@ class ChatViewModelTest {
         assertFalse(called)
         assertFalse(vm.state.value.iMet)
         assertEquals("we_met_failed", vm.state.value.errorKey)
+    }
+
+    @Test
+    fun theSavedThemeLoadsAndAThemeFromTheOtherPersonArrivesLive() = kotlinx.coroutines.runBlocking {
+        val api = FakeChatApi(emptyList()).apply { savedTheme = com.example.data.ChatThemeState("m1", "ocean", ANNA) }
+        val vm = ChatViewModel("m1", ME, api)
+        assertEquals("ocean", vm.state.value.theme)
+        assertEquals(null, vm.state.value.themeChangedByPeer)  // loading is not a change
+
+        api.themeLive.emit(com.example.data.ChatThemeState("m1", "lofi", ANNA))
+        assertEquals("lofi", vm.state.value.theme)
+        assertEquals("lofi", vm.state.value.themeChangedByPeer)
+        vm.clearThemeNotice()
+        assertEquals(null, vm.state.value.themeChangedByPeer)
+    }
+
+    @Test
+    fun myThemeShowsAtOnceAndComesBackIfRefused() = kotlinx.coroutines.runBlocking {
+        val api = FakeChatApi(emptyList())
+        val vm = ChatViewModel("m1", ME, api)
+        assertEquals("classic", vm.state.value.theme)
+        vm.setTheme("hearts")
+        assertEquals("hearts", vm.state.value.theme)
+        assertEquals("hearts", api.savedTheme?.theme)
+        // My own change echoed back live is not announced as the other person's.
+        api.themeLive.emit(com.example.data.ChatThemeState("m1", "hearts", ME))
+        assertEquals(null, vm.state.value.themeChangedByPeer)
+
+        api.failTheme = true
+        vm.setTheme("golden")
+        assertEquals("hearts", vm.state.value.theme)
+        assertEquals("chat_theme_failed", vm.state.value.errorKey)
     }
 }

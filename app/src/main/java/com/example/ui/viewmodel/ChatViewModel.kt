@@ -33,7 +33,11 @@ data class ChatUiState(
     /** The user closed the "Have you met?" card for this visit. */
     val meetingPromptDismissed: Boolean = false,
     /** Localization key of the thank-you shown after confirming, or null. */
-    val meetingDoneKey: String? = null
+    val meetingDoneKey: String? = null,
+    /** Theme of this conversation, shared by both people ([com.example.ui.chat.ChatThemes] key). */
+    val theme: String = DEFAULT_THEME,
+    /** The other person just changed the theme to this key (shown once), or null. */
+    val themeChangedByPeer: String? = null
 ) {
     /** Ask "Have you met in person?" once the other person said so, or after a real conversation. */
     val showMeetingPrompt: Boolean
@@ -66,7 +70,41 @@ class ChatViewModel(
     init {
         load()
         if (shareActivity) watchPeer()
+        watchTheme()
     }
+
+    /** Loads the theme, then follows changes (from either person) live. */
+    private fun watchTheme() {
+        val chat = api ?: return
+        viewModelScope.launch {
+            runCatching { chat.chatTheme(matchId) }.getOrNull()?.let { t -> _state.update { it.copy(theme = t.theme) } }
+            chat.themeChanges(matchId)
+                .catch { /* the chat works without live themes; it shows the theme it loaded */ }
+                .collect { t -> applyTheme(t.theme, byPeer = t.setBy != null && t.setBy != myUserId) }
+        }
+    }
+
+    private fun applyTheme(theme: String, byPeer: Boolean) = _state.update {
+        if (it.theme == theme) it
+        else it.copy(theme = theme, themeChangedByPeer = if (byPeer) theme else it.themeChangedByPeer)
+    }
+
+    /** Sets the theme for both people. Shown at once; put back if the server refuses. */
+    fun setTheme(theme: String) {
+        val chat = api ?: return
+        val before = _state.value.theme
+        if (theme == before) return
+        _state.update { it.copy(theme = theme) }
+        viewModelScope.launch {
+            try {
+                chat.setChatTheme(matchId, theme)
+            } catch (e: Throwable) {
+                _state.update { it.copy(theme = before, errorKey = "chat_theme_failed") }
+            }
+        }
+    }
+
+    fun clearThemeNotice() = _state.update { it.copy(themeChangedByPeer = null) }
 
     private fun watchPeer() {
         val chat = api ?: return
@@ -192,6 +230,7 @@ class ChatViewModel(
     }
 
     companion object {
+        const val DEFAULT_THEME = "classic"
         const val MAX_LENGTH = 2000
         const val TYPING_SHOWN_MS = 4_000L
         const val TYPING_SEND_EVERY_MS = 3_000L

@@ -70,7 +70,26 @@ interface ChatApi {
      */
     suspend fun confirmMeeting(matchId: String, feeling: String): Boolean =
         throw UnsupportedOperationException("confirm_meeting")
+
+    /** The conversation's theme, shared by both people (migration 034); null means the default. */
+    suspend fun chatTheme(matchId: String): ChatThemeState? = null
+
+    /** Sets the theme for both people; the other person's open chat changes at once. */
+    suspend fun setChatTheme(matchId: String, theme: String): ChatThemeState =
+        throw UnsupportedOperationException("set_chat_theme")
+
+    /** Theme changes in one chat, live (also my own), until the collector stops. */
+    fun themeChanges(matchId: String): Flow<ChatThemeState> = emptyFlow()
 }
+
+/** A chat's theme ([com.example.ui.chat.ChatThemes] key) and who chose it. */
+@Serializable
+data class ChatThemeState(
+    @SerialName("match_id") val matchId: String,
+    val theme: String,
+    @SerialName("set_by") val setBy: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
+)
 
 @Serializable
 internal data class MeetingResult(@SerialName("both_met") val bothMet: Boolean = false)
@@ -154,6 +173,37 @@ class SupabaseChatService(
                 when (action) {
                     is PostgresAction.Insert -> action.decodeRecord<MessageRow>().toChatMessage()
                     is PostgresAction.Update -> action.decodeRecord<MessageRow>().toChatMessage()
+                    else -> null
+                }
+            })
+        } finally {
+            withContext(NonCancellable) { client.realtime.removeChannel(channel) }
+        }
+    }
+
+    override suspend fun chatTheme(matchId: String): ChatThemeState? =
+        client.from("chat_themes")
+            .select { filter { eq("match_id", matchId) } }
+            .decodeSingleOrNull<ChatThemeState>()
+
+    override suspend fun setChatTheme(matchId: String, theme: String): ChatThemeState =
+        client.postgrest.rpc("set_chat_theme", buildJsonObject {
+            put("p_match_id", matchId)
+            put("p_theme", theme)
+        }).decodeAs<ChatThemeState>()
+
+    override fun themeChanges(matchId: String): Flow<ChatThemeState> = flow {
+        val channel = client.channel("theme-$matchId")
+        val updates = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+            table = "chat_themes"
+            filter("match_id", FilterOperator.EQ, matchId)
+        }
+        channel.subscribe()
+        try {
+            emitAll(updates.mapNotNull { action ->
+                when (action) {
+                    is PostgresAction.Insert -> action.decodeRecord<ChatThemeState>()
+                    is PostgresAction.Update -> action.decodeRecord<ChatThemeState>()
                     else -> null
                 }
             })

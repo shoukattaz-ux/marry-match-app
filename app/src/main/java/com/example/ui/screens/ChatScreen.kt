@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
@@ -40,6 +41,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.core.AppLanguage
+import com.example.ui.chat.ChatTheme
+import com.example.ui.chat.ChatThemeBackground
+import com.example.ui.chat.ChatThemePicker
+import com.example.ui.chat.ChatThemes
 import com.example.core.Localization
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.MarryMatchRepository
@@ -110,6 +115,30 @@ fun ChatScreen(
     var showBlockConfirm by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
+
+    // Chat theme (migration 034): shared by both people; a preview is only on this phone.
+    var showThemePicker by remember { mutableStateOf(false) }
+    var previewTheme by remember { mutableStateOf<String?>(null) }
+    val shownTheme = ChatThemes.find(previewTheme ?: chatState.theme)
+    val themeSnackbar = remember { SnackbarHostState() }
+    chatState.themeChangedByPeer?.let { key ->
+        LaunchedEffect(key) {
+            themeSnackbar.showSnackbar(
+                String.format(Localization.t("chat_theme_changed_by", lang), match.matchedUser.displayName, Localization.t("chat_theme_$key", lang))
+            )
+            chatViewModel.clearThemeNotice()
+        }
+    }
+    if (showThemePicker) {
+        ChatThemePicker(
+            current = chatState.theme,
+            otherName = match.matchedUser.displayName,
+            lang = lang,
+            onDismiss = { showThemePicker = false },
+            onPreview = { previewTheme = it; showThemePicker = false },
+            onApply = { chatViewModel.setTheme(it); previewTheme = null; showThemePicker = false }
+        )
+    }
 
     // Gentle warning before sharing money talk, contact details or links early
     val containsSuspiciousContent = remember(messageInput) { ChatSafety.looksRisky(messageInput) }
@@ -205,6 +234,14 @@ fun ChatScreen(
                             }
                         )
                         DropdownMenuItem(
+                            text = { Text(Localization.t("chat_theme_title", lang)) },
+                            leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null) },
+                            onClick = {
+                                showMenu = false
+                                showThemePicker = true
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text(Localization.t(if (chatState.iMet) "we_met_update" else "we_met_menu", lang)) },
                             leadingIcon = { Icon(Icons.Default.EventAvailable, contentDescription = null) },
                             onClick = {
@@ -239,7 +276,8 @@ fun ChatScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(themeSnackbar) }
     ) { padding ->
         Column(
             modifier = modifier
@@ -290,12 +328,23 @@ fun ChatScreen(
                 }
             }
 
-            // Real-time messages list
+            // While previewing, show that theme here only; Apply sets it for both people.
+            previewTheme?.let { key ->
+                ThemePreviewBar(
+                    name = Localization.t("chat_theme_$key", lang),
+                    lang = lang,
+                    onCancel = { previewTheme = null },
+                    onApply = { chatViewModel.setTheme(key); previewTheme = null }
+                )
+            }
+
+            // Real-time messages list, over the chat's theme (shared by both people)
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            ChatThemeBackground(shownTheme)
+            ThemedBubbles(shownTheme) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -374,6 +423,8 @@ fun ChatScreen(
                 items(pendingMedia, key = { "pending-${it.messageId}" }) { pending ->
                     media.PendingItem(pending, lang)
                 }
+            }
+            }
             }
 
             if (chatState.showMeetingPrompt) {
@@ -808,4 +859,44 @@ private fun WeMetDialog(name: String, lang: AppLanguage, saving: Boolean, onDism
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text(Localization.t("cancel", lang)) } }
     )
+}
+
+/**
+ * Gives the message list the theme's bubble colours: text, photo and voice bubbles all take
+ * primary (mine) and surfaceVariant (theirs) from the colour scheme.
+ */
+@Composable
+private fun ThemedBubbles(theme: ChatTheme, content: @Composable () -> Unit) {
+    if (theme.isClassic) return content()
+    MaterialTheme(
+        colorScheme = MaterialTheme.colorScheme.copy(
+            primary = theme.myBubble,
+            onPrimary = theme.onMyBubble,
+            surfaceVariant = theme.theirBubble,
+            onSurfaceVariant = theme.onTheirBubble
+        ),
+        typography = MaterialTheme.typography,
+        shapes = MaterialTheme.shapes,
+        content = content
+    )
+}
+
+/** Shown while trying a theme: only I see it until I apply it. */
+@Composable
+private fun ThemePreviewBar(name: String, lang: AppLanguage, onCancel: () -> Unit, onApply: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth().testTag("chat_theme_preview_bar")) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                String.format(Localization.t("chat_theme_previewing", lang), name),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onCancel) { Text(Localization.t("cancel", lang)) }
+            TextButton(onClick = onApply) { Text(Localization.t("chat_theme_apply", lang), fontWeight = FontWeight.Bold) }
+        }
+    }
 }
