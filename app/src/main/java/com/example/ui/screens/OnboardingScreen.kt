@@ -49,6 +49,7 @@ import com.example.model.Trait
 import com.example.model.PromptCatalog
 import com.example.ui.components.MarryPrimaryButton
 import com.example.ui.components.MarrySecondaryButton
+import com.example.ui.components.StepBannerSpace
 import com.example.ui.theme.extendedColors
 import com.example.ui.viewmodel.OnboardingState
 import com.example.ui.viewmodel.OnboardingViewModel
@@ -165,11 +166,14 @@ fun OnboardingScreen(
                 MarryPrimaryButton(text = t("retry"), onClick = vm::load, testTag = "onboarding_retry_btn")
             }
 
-            else -> Column(
-                modifier = modifier
+            else -> BoxWithConstraints(modifier = modifier.fillMaxSize().padding(padding)) {
+              val screenHeight = maxHeight
+              Column(
+                modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
                     .verticalScroll(rememberScrollState())
+                    // At least one screen high, so the card below can take the free space.
+                    .heightIn(min = screenHeight)
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -229,6 +233,12 @@ fun OnboardingScreen(
                 if (state.saving) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
+
+                // During sign-up, the free space under each step shows that step's information card.
+                if (!editMode) {
+                    StepBannerSpace(step = state.step, lang = lang, modifier = Modifier.weight(1f))
+                }
+            }
             }
         }
     }
