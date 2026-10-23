@@ -5,6 +5,7 @@ import com.google.android.gms.tasks.Task
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.nl.languageid.LanguageIdentification
+import com.google.mlkit.nl.languageid.LanguageIdentificationOptions
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.TranslateRemoteModel
 import com.google.mlkit.nl.translate.Translation
@@ -21,13 +22,16 @@ import kotlin.coroutines.resumeWithException
  */
 class MlKitTranslationEngine : TranslationEngine {
     // Created on first use, so a chat shown as written loads nothing.
-    private val identifierLazy = lazy { LanguageIdentification.getClient() }
+    // Only fairly certain guesses count: a wrong guess would "translate" a message needlessly.
+    private val identifierLazy = lazy {
+        LanguageIdentification.getClient(LanguageIdentificationOptions.Builder().setConfidenceThreshold(CONFIDENCE).build())
+    }
     private val identifier by identifierLazy
     private val translators = HashMap<Pair<String, String>, Translator>()
     private val models by lazy { RemoteModelManager.getInstance() }
 
     override suspend fun identify(text: String): String? =
-        identifier.identifyLanguage(text).await().takeIf { it != UNDETERMINED }
+        identifier.identifyLanguage(text).await().takeIf { it != UNDETERMINED }?.let { LEGACY_CODES[it] ?: it }
 
     override fun canTranslateFrom(code: String): Boolean = TranslateLanguage.fromLanguageTag(code) != null
 
@@ -62,6 +66,9 @@ class MlKitTranslationEngine : TranslationEngine {
 
     private companion object {
         const val UNDETERMINED = "und"
+        const val CONFIDENCE = 0.6f
+        // Language identification still uses older codes for these; the translator the new ones.
+        val LEGACY_CODES = mapOf("iw" to "he", "fil" to "tl")
     }
 }
 

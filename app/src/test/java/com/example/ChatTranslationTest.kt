@@ -101,6 +101,15 @@ class ChatTranslationTest {
     }
 
     @Test
+    fun emojiAndVeryShortMessagesAreNotEvenChecked() = runTest(UnconfinedTestDispatcher()) {
+        val engine = FakeEngine()
+        val c = ChatTranslationController(engine, this, initialTarget = "en")
+        c.onMessages(listOf(IncomingText("1", "😊😊👍"), IncomingText("2", "Ja!"), IncomingText("3", "12:30 ok")))
+        assertEquals(setOf(TranslationResult.AsWritten), c.results.value.values.toSet())
+        assertEquals(0, engine.translations)
+    }
+
+    @Test
     fun aLanguageTheTranslatorCannotDoStaysAsWritten() = runTest(UnconfinedTestDispatcher()) {
         val c = ChatTranslationController(FakeEngine(), this, initialTarget = "en")
         c.onMessages(listOf(IncomingText("1", "Bonjour à tous")))

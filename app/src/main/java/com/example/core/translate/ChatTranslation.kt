@@ -73,6 +73,8 @@ data class IncomingText(val id: String, val text: String)
  * already in that language, or one whose language is unclear, stays as written; the user's own
  * messages are never translated. Work runs one message at a time, newest wishes first.
  */
+private const val MIN_LETTERS = 4
+
 class ChatTranslationController(
     private val engine: TranslationEngine,
     private val scope: CoroutineScope,
@@ -131,7 +133,8 @@ class ChatTranslationController(
     }
 
     private suspend fun translateOne(text: String, to: String): TranslationResult = try {
-        val from = engine.identify(text)
+        // "ok", "😊", "123": too little to know the language, and nothing to translate.
+        val from = if (text.count { it.isLetter() } < MIN_LETTERS) null else engine.identify(text)
         when {
             from == null || from == to || !engine.canTranslateFrom(from) -> TranslationResult.AsWritten
             else -> {
