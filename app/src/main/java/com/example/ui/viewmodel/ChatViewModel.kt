@@ -7,6 +7,8 @@ import com.example.data.ChatTime
 import com.example.data.PeerEvent
 import com.example.model.ChatMessage
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +37,7 @@ data class ChatUiState(
     /** Localization key of the thank-you shown after confirming, or null. */
     val meetingDoneKey: String? = null,
     /** Theme of this conversation, shared by both people ([com.example.ui.chat.ChatThemes] key). */
-    val theme: String = DEFAULT_THEME,
+    val theme: String = ChatViewModel.DEFAULT_THEME,
     /** The other person just changed the theme to this key (shown once), or null. */
     val themeChangedByPeer: String? = null
 ) {
@@ -179,7 +181,8 @@ class ChatViewModel(
         _state.update { it.copy(sending = true, errorKey = null) }
         viewModelScope.launch {
             try {
-                val sent = chat.send(matchId, body)
+                // Finishes even when the chat is closed right after tapping send.
+                val sent = withContext(NonCancellable) { chat.send(matchId, body) }
                 _state.update { s -> s.copy(sending = false, messages = merge(s.messages, listOf(sent))) }
             } catch (e: Throwable) {
                 val msg = e.message.orEmpty()

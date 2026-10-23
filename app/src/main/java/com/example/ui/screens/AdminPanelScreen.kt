@@ -82,6 +82,7 @@ fun AdminPanelScreen(
     val thread = state.openThread
     if (thread != null) {
         val photo by produceState<String?>(null, thread.photo) { value = thread.photo?.let { repository.profilePhotoUrl(it) } }
+        com.example.ui.components.ScreenViewModels(key = "support_" + thread.threadId) {
         com.example.ui.chat.SupportChatScreen(
             target = com.example.ui.chat.SupportChatTarget(
                 threadId = thread.threadId,
@@ -99,6 +100,7 @@ fun AdminPanelScreen(
             lang = lang,
             onBack = adminVm::closeSupportThread
         )
+        }
         return
     }
 

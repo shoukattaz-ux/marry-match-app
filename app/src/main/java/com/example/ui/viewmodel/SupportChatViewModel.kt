@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.SupportApi
 import com.example.data.SupportException
 import com.example.data.SupportMessage
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
@@ -45,6 +47,7 @@ class SupportChatViewModel(
 
     /** Only the two people in it mark messages read (another admin only reads along). */
     private val takesPart get() = canWrite
+    private var liveStarted = false
 
     init {
         load()
@@ -65,6 +68,9 @@ class SupportChatViewModel(
                 _state.update { it.copy(loading = false, loadFailed = true) }
             }
         }
+        // One live connection, also when the history is loaded again after an error.
+        if (liveStarted) return
+        liveStarted = true
         viewModelScope.launch {
             support.changes(threadId).catch { }.collect { onIncoming(it) }
         }
@@ -98,7 +104,8 @@ class SupportChatViewModel(
         _state.update { it.copy(sending = true, errorKey = null) }
         viewModelScope.launch {
             try {
-                val sent = support.send(threadId, memberId, body.ifEmpty { null }, photo)
+                // Finishes even when the conversation is closed right after tapping send.
+                val sent = withContext(NonCancellable) { support.send(threadId, memberId, body.ifEmpty { null }, photo) }
                 _state.update { it.copy(sending = false) }
                 onIncoming(sent)
             } catch (e: SupportException) {

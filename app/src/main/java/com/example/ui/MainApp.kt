@@ -131,12 +131,14 @@ fun MainApp(
                     ActiveSubScreen.CHAT_THREAD -> {
                         activeChatMatch?.let { match ->
                             BackHandler { activeSubScreen = ActiveSubScreen.NONE }
-                            ChatScreen(
-                                match = match,
-                                repository = repository,
-                                onBack = { activeSubScreen = ActiveSubScreen.NONE },
-                                onOpenReport = { reportUserTarget = match.matchedUser }
-                            )
+                            com.example.ui.components.ScreenViewModels(key = "chat_" + match.id) {
+                                ChatScreen(
+                                    match = match,
+                                    repository = repository,
+                                    onBack = { activeSubScreen = ActiveSubScreen.NONE },
+                                    onOpenReport = { reportUserTarget = match.matchedUser }
+                                )
+                            }
                         } ?: run { activeSubScreen = ActiveSubScreen.NONE }
                     }
                     ActiveSubScreen.SETTINGS -> {
@@ -215,6 +217,7 @@ fun MainApp(
                                 activeSubScreen = ActiveSubScreen.NONE
                                 repository.refreshMatches()
                             }
+                            com.example.ui.components.ScreenViewModels(key = "support_" + item.thread.threadId) {
                             com.example.ui.chat.SupportChatScreen(
                                 target = com.example.ui.chat.SupportChatTarget(
                                     threadId = item.thread.threadId,
@@ -231,6 +234,7 @@ fun MainApp(
                                 lang = lang,
                                 onBack = close
                             )
+                            }
                         } ?: run { activeSubScreen = ActiveSubScreen.NONE }
                     }
                     ActiveSubScreen.NONE -> {}

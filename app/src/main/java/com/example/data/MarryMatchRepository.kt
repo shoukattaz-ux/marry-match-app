@@ -192,6 +192,8 @@ class MarryMatchRepository {
         initializeSupabase()
     }
 
+    // httpConfig (for the FreshSession plugin) is marked internal by supabase-kt.
+    @OptIn(io.github.jan.supabase.annotations.SupabaseInternal::class)
     fun initializeSupabase() {
         val configured = AppConfig.isConfigured
         _isConfigured.value = configured
