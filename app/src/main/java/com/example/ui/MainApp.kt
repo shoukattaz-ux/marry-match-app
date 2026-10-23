@@ -51,7 +51,8 @@ enum class ActiveSubScreen {
     PROFILE_CREATION,
     CHAPERONE,
     CHAT_MEDIA_SETTINGS,
-    NOTIFICATION_SOUNDS
+    NOTIFICATION_SOUNDS,
+    SUPPORT_THREAD
 }
 
 @Composable
@@ -64,7 +65,8 @@ fun MainApp(
     val isConfigured by repository.isConfigured.collectAsState()
     val matchCelebration by repository.matchCelebration.collectAsState()
     val newLikes by repository.newLikesCount.collectAsState()
-    val unreadChats = repository.matches.collectAsState().value.count { it.unread }
+    val unreadChats = repository.matches.collectAsState().value.count { it.unread } +
+        repository.supportThreads.collectAsState().value.count { it.thread.unread > 0 }
 
     if (!isConfigured) {
         SupabaseNotConfiguredScreen(repository = repository, modifier = modifier)
@@ -75,6 +77,7 @@ fun MainApp(
     var activeSubScreen by remember { mutableStateOf(ActiveSubScreen.NONE) }
     var editorStartStep by remember { mutableIntStateOf(1) }
     var activeChatMatch by remember { mutableStateOf<MatchItem?>(null) }
+    var activeSupport by remember { mutableStateOf<com.example.data.SupportThreadItem?>(null) }
     var reportUserTarget by remember { mutableStateOf<UserProfile?>(null) }
 
     when (authState) {
@@ -205,6 +208,31 @@ fun MainApp(
                             onBack = { activeSubScreen = ActiveSubScreen.SETTINGS }
                         )
                     }
+                    ActiveSubScreen.SUPPORT_THREAD -> {
+                        activeSupport?.let { item ->
+                            val me by repository.currentUser.collectAsState()
+                            val close = {
+                                activeSubScreen = ActiveSubScreen.NONE
+                                repository.refreshMatches()
+                            }
+                            com.example.ui.chat.SupportChatScreen(
+                                target = com.example.ui.chat.SupportChatTarget(
+                                    threadId = item.thread.threadId,
+                                    memberId = me.id,
+                                    name = item.thread.name,
+                                    photoUrl = item.photoUrl,
+                                    photoFocus = item.thread.photoFocus ?: com.example.model.PhotoFocus(),
+                                    adminSide = false,
+                                    open = item.thread.open,
+                                    muted = item.thread.muted
+                                ),
+                                myUserId = me.id,
+                                api = repository.support,
+                                lang = lang,
+                                onBack = close
+                            )
+                        } ?: run { activeSubScreen = ActiveSubScreen.NONE }
+                    }
                     ActiveSubScreen.NONE -> {}
                 }
             } else {
@@ -291,7 +319,11 @@ fun MainApp(
                                         activeChatMatch = match
                                         activeSubScreen = ActiveSubScreen.CHAT_THREAD
                                     },
-                                    onOpenDiscover = { activeTab = AppTab.DISCOVER }
+                                    onOpenDiscover = { activeTab = AppTab.DISCOVER },
+                                    onOpenSupport = { item ->
+                                        activeSupport = item
+                                        activeSubScreen = ActiveSubScreen.SUPPORT_THREAD
+                                    }
                                 )
                             }
                             AppTab.PROFILE -> {

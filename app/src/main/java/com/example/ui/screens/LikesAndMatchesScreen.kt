@@ -96,10 +96,12 @@ fun ChatsScreen(
     repository: MarryMatchRepository,
     onOpenChat: (MatchItem) -> Unit,
     onOpenDiscover: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenSupport: (com.example.data.SupportThreadItem) -> Unit = {}
 ) {
     val lang by repository.appLanguage.collectAsState()
     val matches by repository.matches.collectAsState()
+    val supportThreads by repository.supportThreads.collectAsState()
     val unreadChats = matches.count { it.unread }
 
     // Fresh list every time the tab opens.
@@ -130,7 +132,7 @@ fun ChatsScreen(
                 .padding(padding)
                 .testTag("chats_screen")
         ) {
-            if (matches.isEmpty()) {
+            if (matches.isEmpty() && supportThreads.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -163,6 +165,21 @@ fun ChatsScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // Messages from admins come first, with the admin's own profile and badge.
+                    items(supportThreads, key = { "support_" + it.thread.threadId }) { item ->
+                        val th = item.thread
+                        com.example.ui.chat.SupportThreadRow(
+                            name = th.name,
+                            photoUrl = item.photoUrl,
+                            photoFocus = th.photoFocus ?: com.example.model.PhotoFocus(),
+                            preview = com.example.ui.chat.supportPreview(th, lang),
+                            time = item.time,
+                            unread = th.unread,
+                            showAdminBadge = true,
+                            label = Localization.t("support_list_label", lang),
+                            onClick = { onOpenSupport(item) }
+                        )
+                    }
                     items(matches, key = { it.id }) { match ->
                         MatchRow(
                             match = match,

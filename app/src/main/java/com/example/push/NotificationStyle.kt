@@ -46,7 +46,7 @@ enum class NotifyCategory(val key: String, val default: NotifyStyle) {
     companion object {
         /** Which category a push "kind" from send-push belongs to. */
         fun forKind(kind: String): NotifyCategory = when (kind) {
-            "message", "your_turn" -> MESSAGES
+            "message", "your_turn", "support", "support_reply" -> MESSAGES
             "match", "expiring" -> MATCHES
             else -> LIKES
         }

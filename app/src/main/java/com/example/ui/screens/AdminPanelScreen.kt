@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
@@ -52,7 +53,7 @@ import com.example.ui.viewmodel.SelfieQueueViewModel
 
 private enum class AdminTab(val labelKey: String) {
     OVERVIEW("admin_tab_overview"), SELFIES("admin_tab_selfies"), REPORTS("admin_tab_reports"),
-    USERS("admin_tab_users"), LOG("admin_tab_log")
+    USERS("admin_tab_users"), MESSAGES("admin_tab_messages"), LOG("admin_tab_log")
 }
 
 /** Short date and time from an ISO timestamp, e.g. "2026-10-15 09:00". */
@@ -73,8 +74,33 @@ fun AdminPanelScreen(
     val lang by repository.appLanguage.collectAsState()
     val queueVm: SelfieQueueViewModel = viewModel(key = "selfie_queue") { SelfieQueueViewModel(repository.verification) }
     val queueState by queueVm.state.collectAsState()
-    val adminVm: AdminViewModel = viewModel(key = "admin_panel") { AdminViewModel(repository.admin) }
+    val adminVm: AdminViewModel = viewModel(key = "admin_panel") { AdminViewModel(repository.admin, repository.support) }
     val state by adminVm.state.collectAsState()
+    val me by repository.currentUser.collectAsState()
+
+    // An open admin conversation fills the screen; back returns to the panel.
+    val thread = state.openThread
+    if (thread != null) {
+        val photo by produceState<String?>(null, thread.photo) { value = thread.photo?.let { repository.profilePhotoUrl(it) } }
+        com.example.ui.chat.SupportChatScreen(
+            target = com.example.ui.chat.SupportChatTarget(
+                threadId = thread.threadId,
+                memberId = thread.otherId,
+                name = thread.name,
+                photoUrl = photo,
+                adminSide = true,
+                email = thread.email,
+                canWrite = thread.mine,
+                adminName = thread.adminName,
+                open = thread.open
+            ),
+            myUserId = me.id,
+            api = repository.support,
+            lang = lang,
+            onBack = adminVm::closeSupportThread
+        )
+        return
+    }
 
     // Load each tab when it is opened.
     LaunchedEffect(tab) {
@@ -83,6 +109,7 @@ fun AdminPanelScreen(
             AdminTab.SELFIES -> queueVm.reload()
             AdminTab.REPORTS -> adminVm.loadReports()
             AdminTab.USERS -> if (state.users.isEmpty()) adminVm.searchUsers()
+            AdminTab.MESSAGES -> adminVm.loadSupportThreads()
             AdminTab.LOG -> adminVm.loadAudit()
         }
     }
@@ -104,6 +131,7 @@ fun AdminPanelScreen(
                     val count = when (t) {
                         AdminTab.SELFIES -> state.stats?.pendingSelfies ?: queueState.items.size
                         AdminTab.REPORTS -> state.stats?.openReports ?: 0
+                        AdminTab.MESSAGES -> state.supportThreads.count { it.mine && it.unread > 0 }
                         else -> 0
                     }
                     NavigationBarItem(
@@ -117,6 +145,7 @@ fun AdminPanelScreen(
                                         AdminTab.SELFIES -> Icons.Default.Face
                                         AdminTab.REPORTS -> Icons.Default.Flag
                                         AdminTab.USERS -> Icons.Default.People
+                                        AdminTab.MESSAGES -> Icons.Default.Forum
                                         AdminTab.LOG -> Icons.Default.History
                                     },
                                     contentDescription = null
@@ -159,7 +188,8 @@ fun AdminPanelScreen(
                     onDecide = queueVm::decide
                 )
                 AdminTab.REPORTS -> AdminReports(state, lang, adminVm)
-                AdminTab.USERS -> AdminUsers(state, lang, adminVm)
+                AdminTab.USERS -> AdminUsers(state, lang, adminVm, myUserId = me.id)
+                AdminTab.MESSAGES -> AdminMessages(state, lang, adminVm, repository)
                 AdminTab.LOG -> AdminLog(state.audit, state.loading, lang, onReload = adminVm::loadAudit)
             }
         }
@@ -668,7 +698,7 @@ private fun ConfirmBanDialog(name: String, lang: AppLanguage, onDismiss: () -> U
 }
 
 @Composable
-private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewModel) {
+private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewModel, myUserId: String) {
     var confirmBan by remember { mutableStateOf<AdminUser?>(null) }
     var confirmAdmin by remember { mutableStateOf<Pair<AdminUser, Boolean>?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -708,7 +738,8 @@ private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewMode
                 items(state.users, key = { it.userId }) { user ->
                     UserCard(user, lang, working = state.workingOn == user.userId, actionsEnabled = state.workingOn == null,
                         onBan = { confirmBan = user }, onUnban = { vm.setBanned(user, false, null) },
-                        onSetAdmin = { admin -> confirmAdmin = user to admin })
+                        onSetAdmin = { admin -> confirmAdmin = user to admin },
+                        onMessage = if (user.userId != myUserId) ({ vm.messageUser(user) }) else null)
                 }
             }
         }
@@ -745,7 +776,9 @@ private fun UserCard(
     actionsEnabled: Boolean,
     onBan: () -> Unit,
     onUnban: () -> Unit,
-    onSetAdmin: (Boolean) -> Unit
+    onSetAdmin: (Boolean) -> Unit,
+    /** Opens this admin's conversation with the person; null on the admin's own card. */
+    onMessage: (() -> Unit)?
 ) {
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -797,6 +830,13 @@ private fun UserCard(
                 Text(badges.joinToString(" • ") { Localization.t(it, lang) }, style = MaterialTheme.typography.labelMedium,
                     color = if (user.isBanned) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
             }
+            if (onMessage != null && !working) {
+                FilledTonalButton(onClick = onMessage, enabled = actionsEnabled, modifier = Modifier.testTag("admin_message_user")) {
+                    Icon(Icons.Default.Forum, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(Localization.t("admin_message_user", lang))
+                }
+            }
             when {
                 working -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 // Only the owner sees this, and never on the owner's own card.
@@ -816,6 +856,46 @@ private fun UserCard(
                         enabled = actionsEnabled && user.emailConfirmed,
                         modifier = Modifier.testTag("admin_make_admin")
                     ) { Text(Localization.t("admin_make_admin", lang)) }
+                }
+            }
+        }
+    }
+}
+
+/** Every admin conversation: own ones can be answered, others only read. */
+@Composable
+private fun AdminMessages(state: AdminUiState, lang: AppLanguage, vm: AdminViewModel, repository: MarryMatchRepository) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(Localization.t("admin_messages_title", lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            TextButton(onClick = vm::loadSupportThreads, enabled = !state.loading) { Text(Localization.t("admin_reload", lang)) }
+        }
+        Text(Localization.t("admin_messages_hint", lang), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+        // Conversations without any message yet are left out.
+        val threads = state.supportThreads.filter { it.lastMessage != null || it.lastHasPhoto }
+        when {
+            state.loading && threads.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            threads.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(Localization.t("admin_messages_empty", lang), color = MaterialTheme.extendedColors.muted)
+            }
+            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(threads, key = { it.threadId }) { th ->
+                    val photo by produceState<String?>(null, th.photo) { value = th.photo?.let { repository.profilePhotoUrl(it) } }
+                    com.example.ui.chat.SupportThreadRow(
+                        name = th.name,
+                        photoUrl = photo,
+                        photoFocus = th.photoFocus ?: com.example.model.PhotoFocus(),
+                        preview = com.example.ui.chat.supportPreview(th, lang),
+                        time = th.lastMessageAt?.let { com.example.data.ChatTime.format(it) }.orEmpty(),
+                        unread = if (th.mine) th.unread else 0,
+                        showAdminBadge = false,
+                        label = when {
+                            !th.open -> Localization.t("admin_messages_closed", lang)
+                            th.mine -> null
+                            else -> String.format(Localization.t("admin_messages_by", lang), th.adminName)
+                        },
+                        onClick = { vm.openSupportThread(th) }
+                    )
                 }
             }
         }
