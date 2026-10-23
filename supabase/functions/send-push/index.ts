@@ -2,13 +2,14 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Sends one push through Firebase Cloud Messaging (HTTP v1).
 // Called only by database triggers (migration 013b) with the x-push-secret header, never by the
-// app. POST { user_id, kind: "match" | "message" | "like" | "your_turn" | "expiring", data: { match_id?, name? } }.
+// app. POST { user_id, kind: "match" | "message" | "like" | "your_turn" | "expiring" | "support" | "support_reply",
+// data: { match_id?, name? } } (for the two admin message kinds, match_id is the conversation id).
 // The Firebase key comes from the FIREBASE_SERVICE_ACCOUNT_JSON secret and never leaves here.
 // Pushes never contain message text: only who wrote, so nothing private shows on a lock screen.
 // Tokens marked data_only (newer apps) get a data-only push: the app then shows it itself, with
 // the sound and vibration the user chose for that kind. Older apps get a notification push.
 
-type Kind = "match" | "message" | "like" | "your_turn" | "expiring";
+type Kind = "match" | "message" | "like" | "your_turn" | "expiring" | "support" | "support_reply";
 type Lang = "en" | "de";
 
 const TEXTS: Record<Kind, Record<Lang, (name: string) => { title: string; body: string }>> = {
@@ -32,6 +33,15 @@ const TEXTS: Record<Kind, Record<Lang, (name: string) => { title: string; body: 
   expiring: {
     en: (n) => ({ title: "Your match expires tomorrow", body: `Say hello to ${n} before it's too late.` }),
     de: (n) => ({ title: "Ihr Match läuft morgen ab", body: `Sagen Sie ${n} Hallo, bevor es zu spät ist.` }),
+  },
+  // Admin messages (migration 037): to the member, and the member's answer to the admin.
+  support: {
+    en: (n) => ({ title: `Message from ${n}`, body: `${n} from the MarryMatch admin team wrote to you.` }),
+    de: (n) => ({ title: `Nachricht von ${n}`, body: `${n} vom MarryMatch-Admin-Team hat Ihnen geschrieben.` }),
+  },
+  support_reply: {
+    en: (n) => ({ title: "New reply", body: `${n} answered your admin message.` }),
+    de: (n) => ({ title: "Neue Antwort", body: `${n} hat auf Ihre Admin-Nachricht geantwortet.` }),
   },
 };
 const SOMEONE: Record<Lang, string> = { en: "Someone", de: "Jemand" };

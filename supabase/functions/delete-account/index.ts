@@ -1,11 +1,11 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Deletes the caller's own account for good (GDPR Art. 17).
-// Photos and any selfie are removed from storage first; deleting the Auth user then removes the
+// Photos, any selfie and admin message photos are removed from storage first; deleting the Auth user then removes the
 // profile, matches, chats, likes and consents (ON DELETE CASCADE). Reports the user made stay
 // without the reporter's id, so moderators can still act on them.
 
-const BUCKETS = ["profile-photos", "selfies"];
+const BUCKETS = ["profile-photos", "selfies", "support-media"];
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
