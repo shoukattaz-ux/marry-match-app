@@ -670,6 +670,7 @@ private fun ConfirmBanDialog(name: String, lang: AppLanguage, onDismiss: () -> U
 @Composable
 private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewModel) {
     var confirmBan by remember { mutableStateOf<AdminUser?>(null) }
+    var confirmAdmin by remember { mutableStateOf<Pair<AdminUser, Boolean>?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedTextField(
             value = state.userQuery,
@@ -681,8 +682,23 @@ private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewMode
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { vm.searchUsers() }),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().testTag("admin_user_search")
         )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = state.signedInOnly,
+                onClick = { vm.setSignedInOnly(!state.signedInOnly) },
+                label = { Text(Localization.t("admin_signed_in_only", lang)) },
+                modifier = Modifier.testTag("admin_signed_in_only")
+            )
+            if (state.users.isNotEmpty()) {
+                Text(
+                    String.format(Localization.t("admin_results_count", lang), state.users.size),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.extendedColors.muted
+                )
+            }
+        }
         when {
             state.loading && state.users.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             state.users.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -691,7 +707,8 @@ private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewMode
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(state.users, key = { it.userId }) { user ->
                     UserCard(user, lang, working = state.workingOn == user.userId, actionsEnabled = state.workingOn == null,
-                        onBan = { confirmBan = user }, onUnban = { vm.setBanned(user, false, null) })
+                        onBan = { confirmBan = user }, onUnban = { vm.setBanned(user, false, null) },
+                        onSetAdmin = { admin -> confirmAdmin = user to admin })
                 }
             }
         }
@@ -702,10 +719,34 @@ private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewMode
             vm.setBanned(user, true, note)
         }
     }
+    confirmAdmin?.let { (user, admin) ->
+        val name = user.displayName.ifBlank { user.email }
+        AlertDialog(
+            onDismissRequest = { confirmAdmin = null },
+            title = { Text(String.format(Localization.t(if (admin) "admin_make_admin_title" else "admin_remove_admin_title", lang), name)) },
+            text = { Text(Localization.t(if (admin) "admin_make_admin_body" else "admin_remove_admin_body", lang)) },
+            confirmButton = {
+                Button(
+                    onClick = { confirmAdmin = null; vm.setAdmin(user, admin) },
+                    colors = if (admin) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("admin_confirm_role")
+                ) { Text(Localization.t(if (admin) "admin_make_admin" else "admin_remove_admin", lang)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmAdmin = null }) { Text(Localization.t("cancel", lang)) } }
+        )
+    }
 }
 
 @Composable
-private fun UserCard(user: AdminUser, lang: AppLanguage, working: Boolean, actionsEnabled: Boolean, onBan: () -> Unit, onUnban: () -> Unit) {
+private fun UserCard(
+    user: AdminUser,
+    lang: AppLanguage,
+    working: Boolean,
+    actionsEnabled: Boolean,
+    onBan: () -> Unit,
+    onUnban: () -> Unit,
+    onSetAdmin: (Boolean) -> Unit
+) {
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -713,13 +754,26 @@ private fun UserCard(user: AdminUser, lang: AppLanguage, working: Boolean, actio
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    listOf(user.displayName.ifBlank { Localization.t("admin_no_profile", lang) }, user.age.takeIf { it > 0 }?.toString(), user.city.ifBlank { null })
+                        .filterNotNull().joinToString(", "),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (user.isAdmin) com.example.ui.components.AdminBadge()
+            }
+            Text(user.email, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             Text(
-                listOf(user.displayName.ifBlank { Localization.t("admin_no_profile", lang) }, user.age.takeIf { it > 0 }?.toString(), user.city.ifBlank { null })
-                    .filterNotNull().joinToString(", "),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
+                listOfNotNull(
+                    user.lastSignInAt?.let { String.format(Localization.t("admin_last_sign_in", lang), shortTime(it)) }
+                        ?: Localization.t("admin_never_signed_in", lang),
+                    Localization.t("admin_email_unconfirmed", lang).takeIf { !user.emailConfirmed }
+                ).joinToString(" • "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.extendedColors.muted
             )
-            Text(user.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
             Text(
                 String.format(Localization.t("admin_user_line", lang), shortTime(user.createdAt), user.respectScore, user.openReports),
                 style = MaterialTheme.typography.bodySmall
@@ -734,17 +788,23 @@ private fun UserCard(user: AdminUser, lang: AppLanguage, working: Boolean, actio
                 Text(badges.joinToString(" • ") { Localization.t(it, lang) }, style = MaterialTheme.typography.labelMedium,
                     color = if (user.isBanned) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
             }
-            if (!user.isAdmin) {
-                if (working) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                } else if (user.isBanned) {
-                    OutlinedButton(onClick = onUnban, enabled = actionsEnabled) { Text(Localization.t("admin_unban", lang)) }
-                } else {
+            when {
+                working -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                user.isAdmin -> OutlinedButton(onClick = { onSetAdmin(false) }, enabled = actionsEnabled, modifier = Modifier.testTag("admin_remove_admin")) {
+                    Text(Localization.t("admin_remove_admin", lang), color = MaterialTheme.colorScheme.error)
+                }
+                user.isBanned -> OutlinedButton(onClick = onUnban, enabled = actionsEnabled) { Text(Localization.t("admin_unban", lang)) }
+                else -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = onBan,
                         enabled = actionsEnabled,
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) { Text(Localization.t("admin_ban", lang)) }
+                    OutlinedButton(
+                        onClick = { onSetAdmin(true) },
+                        enabled = actionsEnabled && user.emailConfirmed,
+                        modifier = Modifier.testTag("admin_make_admin")
+                    ) { Text(Localization.t("admin_make_admin", lang)) }
                 }
             }
         }

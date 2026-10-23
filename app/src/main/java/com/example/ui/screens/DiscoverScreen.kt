@@ -390,7 +390,7 @@ fun ProfileHingeCard(
                             text = "${profile.displayName}, ${profile.age}",
                             style = MaterialTheme.typography.headlineMedium.copy(color = Color.White, fontWeight = FontWeight.Bold)
                         )
-                        VerifiedBadge(selfieVerified = profile.selfieVerified, phoneVerified = profile.phoneVerified)
+                        VerifiedBadge(selfieVerified = profile.selfieVerified, phoneVerified = profile.phoneVerified, isAdmin = profile.isAdmin)
                     }
                     Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {

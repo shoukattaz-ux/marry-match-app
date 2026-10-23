@@ -80,7 +80,9 @@ data class AdminUser(
     @SerialName("is_admin") val isAdmin: Boolean = false,
     @SerialName("needs_review") val needsReview: Boolean = false,
     @SerialName("respect_score") val respectScore: Int = 100,
-    @SerialName("open_reports") val openReports: Int = 0
+    @SerialName("open_reports") val openReports: Int = 0,
+    @SerialName("last_sign_in_at") val lastSignInAt: String? = null,
+    @SerialName("email_confirmed") val emailConfirmed: Boolean = true
 )
 
 @Serializable
@@ -107,7 +109,10 @@ enum class ModerationAction(val wire: String) { DISMISS("dismiss"), WARN("warn")
 interface AdminApi {
     suspend fun stats(): AdminStats
     suspend fun reports(status: String = "open"): List<AdminReport>
-    suspend fun searchUsers(query: String): List<AdminUser>
+    /** Accounts by e-mail, name or id; [signedInOnly] leaves out accounts that never signed in. */
+    suspend fun searchUsers(query: String, signedInOnly: Boolean = false): List<AdminUser>
+    /** Makes an account an admin, or a normal user again; the server logs it. */
+    suspend fun setAdmin(userId: String, admin: Boolean)
     suspend fun auditLog(limit: Int = 100): List<AuditEntry>
     suspend fun moderate(action: ModerationAction, userId: String? = null, reportId: String? = null, note: String? = null)
     /** Switches the Germany location check on or off; the server allows admins only and logs it. */
@@ -123,6 +128,9 @@ interface AdminApi {
 /** A moderation call refused by the server; [code] is e.g. "report_not_open" or "cannot_moderate_admin". */
 class ModerationException(val code: String) : Exception(code)
 
+/** Reasons the database gives for refusing to change admin rights. */
+private val ADMIN_ERRORS = listOf("cannot_remove_self", "email_not_confirmed", "user_banned", "user_not_found", "not_allowed")
+
 class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
 
     private val http = OkHttpClient.Builder()
@@ -136,8 +144,24 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
     override suspend fun reports(status: String): List<AdminReport> =
         client.postgrest.rpc("admin_reports", buildJsonObject { put("p_status", status) }).decodeAs<List<AdminReport>>()
 
-    override suspend fun searchUsers(query: String): List<AdminUser> =
-        client.postgrest.rpc("admin_search_users", buildJsonObject { put("p_query", query.trim()) }).decodeAs<List<AdminUser>>()
+    override suspend fun searchUsers(query: String, signedInOnly: Boolean): List<AdminUser> =
+        client.postgrest.rpc("admin_search_accounts", buildJsonObject {
+            put("p_query", query.trim())
+            put("p_signed_in_only", signedInOnly)
+        }).decodeAs<List<AdminUser>>()
+
+    override suspend fun setAdmin(userId: String, admin: Boolean) {
+        try {
+            client.postgrest.rpc("admin_set_admin", buildJsonObject {
+                put("p_user", userId)
+                put("p_admin", admin)
+            })
+        } catch (e: Exception) {
+            // The database names the reason in its error text.
+            val code = ADMIN_ERRORS.firstOrNull { e.message?.contains(it) == true }
+            throw ModerationException(code ?: "failed")
+        }
+    }
 
     override suspend fun auditLog(limit: Int): List<AuditEntry> =
         client.postgrest.rpc("admin_audit_log", buildJsonObject { put("p_limit", limit) }).decodeAs<List<AuditEntry>>()

@@ -233,7 +233,8 @@ fun ProfileScreen(
                         )
                         VerifiedBadge(
                             selfieVerified = user.selfieVerified,
-                            phoneVerified = user.phoneVerified
+                            phoneVerified = user.phoneVerified,
+                            isAdmin = user.isAdmin
                         )
                     }
 

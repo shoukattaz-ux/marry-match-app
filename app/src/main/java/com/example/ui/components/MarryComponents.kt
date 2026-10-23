@@ -18,6 +18,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -111,13 +115,15 @@ fun MarrySecondaryButton(
 fun VerifiedBadge(
     selfieVerified: Boolean,
     phoneVerified: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isAdmin: Boolean = false
 ) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        if (isAdmin) AdminBadge()
         if (selfieVerified) {
             Surface(
                 shape = CircleShape,
@@ -149,6 +155,56 @@ fun VerifiedBadge(
                     )
                 }
             }
+        }
+    }
+}
+
+/** Platinum metal: the colours of the admin checkmark and its label. */
+private val PlatinumShine = listOf(Color(0xFFF7F8FA), Color(0xFFD5D9E0), Color(0xFFA9B0BC), Color(0xFFE4E7EC))
+private val PlatinumInk = Color(0xFF2E3440)
+
+/**
+ * The platinum checkmark of MarryMatch admins with "ADMIN" underneath. Only the server sets the
+ * admin flag, so nobody can show this badge on their own.
+ */
+@Composable
+fun AdminBadge(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .testTag("admin_badge")
+            .semantics(mergeDescendants = true) { contentDescription = "MarryMatch Admin" },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(22.dp)
+                .shadow(2.dp, CircleShape)
+                .background(Brush.linearGradient(PlatinumShine), CircleShape)
+                .border(1.dp, Color(0xFF8A919E), CircleShape)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Verified,
+                contentDescription = null,
+                tint = PlatinumInk,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .background(Brush.horizontalGradient(PlatinumShine), RoundedCornerShape(4.dp))
+                .border(0.5.dp, Color(0xFF8A919E), RoundedCornerShape(4.dp))
+                .padding(horizontal = 4.dp, vertical = 1.dp)
+        ) {
+            Text(
+                text = "ADMIN",
+                color = PlatinumInk,
+                fontSize = 8.sp,
+                lineHeight = 9.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.8.sp
+            )
         }
     }
 }

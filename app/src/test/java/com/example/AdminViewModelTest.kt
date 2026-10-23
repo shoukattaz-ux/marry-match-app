@@ -27,7 +27,12 @@ private class FakeAdminApi : AdminApi {
         AdminReport("r2", "other", reportedId = "bad", reportedName = "Max"),
         AdminReport("r3", "fake", reportedId = "admin", reportedName = "Mod")
     )
-    val users = mutableListOf(AdminUser("bad", "Max"), AdminUser("admin", "Mod", isAdmin = true))
+    val users = mutableListOf(
+        AdminUser("bad", "Max", email = "max@example.com", lastSignInAt = "2026-10-20T10:00:00Z"),
+        AdminUser("admin", "Mod", email = "mod@example.com", isAdmin = true, lastSignInAt = "2026-10-22T09:00:00Z"),
+        AdminUser("new", "", email = "sara@example.de"),
+        AdminUser("unconfirmed", "", email = "late@example.de", emailConfirmed = false, lastSignInAt = null)
+    )
     val calls = mutableListOf<String>()
     var failNext: Throwable? = null
     /** The Germany location check switch; on by default like on the server. */
@@ -53,7 +58,20 @@ private class FakeAdminApi : AdminApi {
         locationCheck = enabled
     }
     override suspend fun reports(status: String) = reports.filter { it.status == status }
-    override suspend fun searchUsers(query: String) = users.filter { query.isBlank() || it.displayName.contains(query, true) }
+    override suspend fun searchUsers(query: String, signedInOnly: Boolean) = users.filter {
+        (query.isBlank() || it.displayName.contains(query, true) || it.email.contains(query, true)) &&
+            (!signedInOnly || it.lastSignInAt != null)
+    }
+    /** Like admin_set_admin: confirmed e-mail, not banned, nobody removes themselves ("admin" is the caller). */
+    override suspend fun setAdmin(userId: String, admin: Boolean) {
+        val user = users.first { it.userId == userId }
+        when {
+            !admin && userId == "admin" -> throw ModerationException("cannot_remove_self")
+            admin && !user.emailConfirmed -> throw ModerationException("email_not_confirmed")
+            admin && user.isBanned -> throw ModerationException("user_banned")
+        }
+        users.replaceAll { if (it.userId == userId) it.copy(isAdmin = admin) else it }
+    }
     override suspend fun auditLog(limit: Int) = listOf(AuditEntry(1, action = "user_ban"))
     override suspend fun moderate(action: ModerationAction, userId: String?, reportId: String?, note: String?) {
         failNext?.let { failNext = null; throw it }
@@ -149,6 +167,41 @@ class AdminViewModelTest {
         vm.setBanned(vm.state.value.users.single(), false, null)
         assertEquals(false, vm.state.value.users.single().isBanned)
         assertEquals(listOf("ban:bad:fake photos", "unban:bad:"), api.calls)
+    }
+
+    @Test
+    fun searchByEmailAndOnlySignedIn() {
+        val vm = AdminViewModel(FakeAdminApi())
+        vm.setUserQuery("SARA@")
+        vm.searchUsers()
+        assertEquals(listOf("new"), vm.state.value.users.map { it.userId })
+        vm.setUserQuery("")
+        vm.setSignedInOnly(true)
+        assertEquals(listOf("bad", "admin"), vm.state.value.users.map { it.userId })
+    }
+
+    @Test
+    fun makeAndRemoveAdmin() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        vm.searchUsers()
+        vm.setAdmin(vm.state.value.users.first { it.userId == "new" }, true)
+        assertEquals("admin_done_made_admin", vm.state.value.doneKey)
+        assertTrue(vm.state.value.users.first { it.userId == "new" }.isAdmin)
+        vm.setAdmin(vm.state.value.users.first { it.userId == "new" }, false)
+        assertEquals("admin_done_removed_admin", vm.state.value.doneKey)
+        assertEquals(false, vm.state.value.users.first { it.userId == "new" }.isAdmin)
+    }
+
+    @Test
+    fun adminRefusalsAreExplained() {
+        val vm = AdminViewModel(FakeAdminApi())
+        vm.searchUsers()
+        vm.setAdmin(vm.state.value.users.first { it.userId == "admin" }, false)
+        assertEquals("admin_error_remove_self", vm.state.value.errorKey)
+        vm.setAdmin(vm.state.value.users.first { it.userId == "unconfirmed" }, true)
+        assertEquals("admin_error_not_confirmed", vm.state.value.errorKey)
+        assertEquals(false, vm.state.value.users.first { it.userId == "unconfirmed" }.isAdmin)
     }
 
     @Test

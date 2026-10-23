@@ -21,6 +21,8 @@ data class AdminUiState(
     val reportStatus: String = "open",
     val users: List<AdminUser> = emptyList(),
     val userQuery: String = "",
+    /** Search only accounts that have signed in at least once. */
+    val signedInOnly: Boolean = false,
     val audit: List<AuditEntry> = emptyList(),
     val loading: Boolean = false,
     /** Id of the report or user an action is running for. */
@@ -67,9 +69,20 @@ class AdminViewModel(private val api: AdminApi?) : ViewModel() {
     fun setUserQuery(query: String) = _state.update { it.copy(userQuery = query) }
 
     fun searchUsers() = load { a ->
-        val u = a.searchUsers(_state.value.userQuery)
+        val u = a.searchUsers(_state.value.userQuery, _state.value.signedInOnly)
         _state.update { it.copy(users = u) }
     }
+
+    fun setSignedInOnly(only: Boolean) {
+        _state.update { it.copy(signedInOnly = only) }
+        searchUsers()
+    }
+
+    /** Makes [user] an admin or a normal user again; the screen has already asked to confirm. */
+    fun setAdmin(user: AdminUser, admin: Boolean) =
+        act(user.userId, if (admin) "admin_done_made_admin" else "admin_done_removed_admin") {
+            it.setAdmin(user.userId, admin)
+        }
 
     fun loadAudit() = load { a -> val l = a.auditLog(); _state.update { it.copy(audit = l) } }
 
@@ -117,6 +130,9 @@ class AdminViewModel(private val api: AdminApi?) : ViewModel() {
                 when (e.code) {
                     "cannot_moderate_admin" -> "admin_error_admin"
                     "report_not_open" -> "admin_error_already_done"
+                    "cannot_remove_self" -> "admin_error_remove_self"
+                    "email_not_confirmed" -> "admin_error_not_confirmed"
+                    "user_banned" -> "admin_error_banned"
                     else -> "admin_action_failed"
                 }
             } catch (e: Throwable) {
@@ -131,7 +147,7 @@ class AdminViewModel(private val api: AdminApi?) : ViewModel() {
         try {
             val s = _state.value
             val reports = admin.reports(s.reportStatus)
-            val users = if (s.users.isNotEmpty()) admin.searchUsers(s.userQuery) else s.users
+            val users = if (s.users.isNotEmpty()) admin.searchUsers(s.userQuery, s.signedInOnly) else s.users
             val stats = admin.stats()
             _state.update { it.copy(reports = reports, users = users, stats = stats) }
         } catch (e: Throwable) {

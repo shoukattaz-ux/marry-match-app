@@ -222,7 +222,8 @@ fun MatchRow(
                     )
                     VerifiedBadge(
                         selfieVerified = match.matchedUser.selfieVerified,
-                        phoneVerified = match.matchedUser.phoneVerified
+                        phoneVerified = match.matchedUser.phoneVerified,
+                        isAdmin = match.matchedUser.isAdmin
                     )
                 }
                 if (match.matchedUser.activity.isNotBlank()) {
