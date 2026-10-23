@@ -29,7 +29,7 @@ private class FakeAdminApi : AdminApi {
     )
     val users = mutableListOf(
         AdminUser("bad", "Max", email = "max@example.com", lastSignInAt = "2026-10-20T10:00:00Z"),
-        AdminUser("admin", "Mod", email = "mod@example.com", isAdmin = true, lastSignInAt = "2026-10-22T09:00:00Z"),
+        AdminUser("admin", "Mod", email = "mod@example.com", isAdmin = true, isOwner = true, lastSignInAt = "2026-10-22T09:00:00Z"),
         AdminUser("new", "", email = "sara@example.de"),
         AdminUser("unconfirmed", "", email = "late@example.de", emailConfirmed = false, lastSignInAt = null)
     )
@@ -62,11 +62,16 @@ private class FakeAdminApi : AdminApi {
         (query.isBlank() || it.displayName.contains(query, true) || it.email.contains(query, true)) &&
             (!signedInOnly || it.lastSignInAt != null)
     }
-    /** Like admin_set_admin: confirmed e-mail, not banned, nobody removes themselves ("admin" is the caller). */
+    /** Who is calling: "admin" is the owner. */
+    var caller = "admin"
+    /** Like admin_set_admin: confirmed e-mail, not banned, the owner stays, only the owner removes admins. */
     override suspend fun setAdmin(userId: String, admin: Boolean) {
         val user = users.first { it.userId == userId }
+        val callerIsOwner = users.first { it.userId == caller }.isOwner
         when {
-            !admin && userId == "admin" -> throw ModerationException("cannot_remove_self")
+            !admin && user.isOwner -> throw ModerationException("target_is_owner")
+            !admin && userId == caller -> throw ModerationException("cannot_remove_self")
+            !admin && !callerIsOwner -> throw ModerationException("owner_only")
             admin && !user.emailConfirmed -> throw ModerationException("email_not_confirmed")
             admin && user.isBanned -> throw ModerationException("user_banned")
         }
@@ -198,10 +203,26 @@ class AdminViewModelTest {
         val vm = AdminViewModel(FakeAdminApi())
         vm.searchUsers()
         vm.setAdmin(vm.state.value.users.first { it.userId == "admin" }, false)
-        assertEquals("admin_error_remove_self", vm.state.value.errorKey)
+        assertEquals("admin_error_target_owner", vm.state.value.errorKey)
         vm.setAdmin(vm.state.value.users.first { it.userId == "unconfirmed" }, true)
         assertEquals("admin_error_not_confirmed", vm.state.value.errorKey)
         assertEquals(false, vm.state.value.users.first { it.userId == "unconfirmed" }.isAdmin)
+    }
+
+    @Test
+    fun onlyTheOwnerRemovesAdmins() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        vm.searchUsers()
+        vm.setAdmin(vm.state.value.users.first { it.userId == "new" }, true)
+        vm.setAdmin(vm.state.value.users.first { it.userId == "bad" }, true)
+        api.caller = "new"  // a normal admin
+        vm.setAdmin(vm.state.value.users.first { it.userId == "bad" }, false)
+        assertEquals("admin_error_owner_only", vm.state.value.errorKey)
+        assertTrue(vm.state.value.users.first { it.userId == "bad" }.isAdmin)
+        vm.setAdmin(vm.state.value.users.first { it.userId == "admin" }, false)
+        assertEquals("admin_error_target_owner", vm.state.value.errorKey)
+        assertTrue(vm.state.value.users.first { it.userId == "admin" }.isAdmin)
     }
 
     @Test

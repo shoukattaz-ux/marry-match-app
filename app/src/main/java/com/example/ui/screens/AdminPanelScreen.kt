@@ -763,6 +763,15 @@ private fun UserCard(
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 if (user.isAdmin) com.example.ui.components.AdminBadge()
+                if (user.isOwner) {
+                    Text(
+                        Localization.t("admin_owner", lang),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.testTag("admin_owner_label")
+                    )
+                }
             }
             Text(user.email, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             Text(
@@ -790,9 +799,11 @@ private fun UserCard(
             }
             when {
                 working -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                user.isAdmin -> OutlinedButton(onClick = { onSetAdmin(false) }, enabled = actionsEnabled, modifier = Modifier.testTag("admin_remove_admin")) {
+                // Only the owner sees this, and never on the owner's own card.
+                user.isAdmin && user.canRemoveAdmin -> OutlinedButton(onClick = { onSetAdmin(false) }, enabled = actionsEnabled, modifier = Modifier.testTag("admin_remove_admin")) {
                     Text(Localization.t("admin_remove_admin", lang), color = MaterialTheme.colorScheme.error)
                 }
+                user.isAdmin -> Unit
                 user.isBanned -> OutlinedButton(onClick = onUnban, enabled = actionsEnabled) { Text(Localization.t("admin_unban", lang)) }
                 else -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(

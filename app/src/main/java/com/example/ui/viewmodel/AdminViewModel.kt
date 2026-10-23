@@ -131,6 +131,8 @@ class AdminViewModel(private val api: AdminApi?) : ViewModel() {
                     "cannot_moderate_admin" -> "admin_error_admin"
                     "report_not_open" -> "admin_error_already_done"
                     "cannot_remove_self" -> "admin_error_remove_self"
+                    "target_is_owner" -> "admin_error_target_owner"
+                    "owner_only" -> "admin_error_owner_only"
                     "email_not_confirmed" -> "admin_error_not_confirmed"
                     "user_banned" -> "admin_error_banned"
                     else -> "admin_action_failed"

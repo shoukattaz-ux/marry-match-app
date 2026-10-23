@@ -82,7 +82,11 @@ data class AdminUser(
     @SerialName("respect_score") val respectScore: Int = 100,
     @SerialName("open_reports") val openReports: Int = 0,
     @SerialName("last_sign_in_at") val lastSignInAt: String? = null,
-    @SerialName("email_confirmed") val emailConfirmed: Boolean = true
+    @SerialName("email_confirmed") val emailConfirmed: Boolean = true,
+    /** The one account above the admins; nobody can take its rights away. */
+    @SerialName("is_owner") val isOwner: Boolean = false,
+    /** True only when the person searching is the owner and this is another admin. */
+    @SerialName("can_remove_admin") val canRemoveAdmin: Boolean = false
 )
 
 @Serializable
@@ -129,7 +133,7 @@ interface AdminApi {
 class ModerationException(val code: String) : Exception(code)
 
 /** Reasons the database gives for refusing to change admin rights. */
-private val ADMIN_ERRORS = listOf("cannot_remove_self", "email_not_confirmed", "user_banned", "user_not_found", "not_allowed")
+private val ADMIN_ERRORS = listOf("target_is_owner", "owner_only", "cannot_remove_self", "email_not_confirmed", "user_banned", "user_not_found", "not_allowed")
 
 class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
 
