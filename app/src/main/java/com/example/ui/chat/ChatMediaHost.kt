@@ -25,6 +25,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.core.AppLanguage
+import com.example.data.media.VoiceMusicStore
 import com.example.core.Localization
 import com.example.core.media.VoiceRecorder
 import com.example.data.MarryMatchRepository
@@ -51,8 +52,14 @@ class ChatMediaUi internal constructor(
     val voicePlayer: VoicePlayer,
     internal val recorder: VoiceRecorder,
     private val scope: CoroutineScope,
-    private val myUserId: String
+    private val myUserId: String,
+    /** Background music for voice messages (all chats, or this chat's own). */
+    val musicStore: VoiceMusicStore,
+    val matchId: String
 ) {
+    /** Opens the "Background music" sheet. */
+    var showMusic by mutableStateOf(false)
+
     /** Blocked: no uploads, downloads or media actions in this chat. */
     var blocked by mutableStateOf(false)
     var recording by mutableStateOf<VoiceRecording?>(null)
@@ -140,7 +147,7 @@ class ChatMediaUi internal constructor(
             controller.discardVoice(rec.messageId)
             controller.showNotice("media_voice_too_short")
         } else {
-            controller.sendVoice(rec.messageId, result.first, result.second)
+            controller.sendVoice(rec.messageId, result.first, result.second, musicStore.effective(matchId))
         }
     }
 
@@ -181,7 +188,9 @@ fun rememberChatMediaUi(matchId: String, repository: MarryMatchRepository, onSen
             voicePlayer = VoicePlayer(context),
             recorder = VoiceRecorder(context),
             scope = scope,
-            myUserId = myId
+            myUserId = myId,
+            musicStore = VoiceMusicStore(context),
+            matchId = matchId
         )
     }
     var captureUri by rememberSaveable { mutableStateOf<Uri?>(null) }
@@ -345,7 +354,11 @@ fun ChatMediaUi.Banners(lang: AppLanguage) {
         Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth().testTag("media_preparing")) {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    t(if (p.type == MediaType.VIDEO) "media_preparing_video" else "media_preparing_photo") + if (p.progress > 0) " ${p.progress}%" else "",
+                    t(when (p.type) {
+                        MediaType.VIDEO -> "media_preparing_video"
+                        MediaType.VOICE -> "voice_music_mixing"
+                        else -> "media_preparing_photo"
+                    }) + if (p.progress > 0) " ${p.progress}%" else "",
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.weight(1f)
                 )

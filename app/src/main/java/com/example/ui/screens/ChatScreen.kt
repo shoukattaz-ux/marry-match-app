@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.Security
@@ -45,6 +46,8 @@ import com.example.ui.chat.ChatTheme
 import com.example.ui.chat.ChatThemeBackground
 import com.example.ui.chat.ChatThemePicker
 import com.example.ui.chat.ChatThemes
+import com.example.ui.chat.VoiceMusicChip
+import com.example.ui.chat.VoiceMusicSheet
 import com.example.core.Localization
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.MarryMatchRepository
@@ -128,6 +131,15 @@ fun ChatScreen(
             )
             chatViewModel.clearThemeNotice()
         }
+    }
+    if (media.showMusic) {
+        VoiceMusicSheet(
+            store = media.musicStore,
+            matchId = match.id,
+            otherName = match.matchedUser.displayName,
+            lang = lang,
+            onDismiss = { media.showMusic = false }
+        )
     }
     if (showThemePicker) {
         ChatThemePicker(
@@ -505,6 +517,19 @@ fun ChatScreen(
                     .navigationBarsPadding()
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
+                    // Background music for voice messages: shown while it is on for this chat.
+                    val musicVersion by media.musicStore.version.collectAsState()
+                    val activeMusic = remember(musicVersion) { media.musicStore.effective(match.id) }
+                    val ownMusic = remember(musicVersion) { media.musicStore.chat(match.id) is com.example.data.media.ChatMusic.Own }
+                    if (activeMusic != null && !isBlocked) {
+                        VoiceMusicChip(
+                            music = activeMusic,
+                            ownForChat = ownMusic,
+                            lang = lang,
+                            onClick = { media.showMusic = true },
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp)
+                        )
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -515,6 +540,13 @@ fun ChatScreen(
                         val recording = media.recording
                         if (!isBlocked && recording == null) {
                             AttachButton(lang = lang, enabled = !isBlocked, onChoose = media::onAttach)
+                            IconButton(onClick = { media.showMusic = true }, modifier = Modifier.size(40.dp).testTag("voice_music_btn")) {
+                                Icon(
+                                    Icons.Default.MusicNote,
+                                    contentDescription = Localization.t("voice_music_title", lang),
+                                    tint = if (activeMusic != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                         if (recording != null) {
                             RecordingBar(

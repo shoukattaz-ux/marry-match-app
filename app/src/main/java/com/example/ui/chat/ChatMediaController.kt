@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.example.core.media.ChatMediaPrep
+import com.example.core.media.VoiceMusic
+import com.example.core.media.VoiceMusicMixer
 import com.example.core.media.Prepared
 import com.example.data.PhotoUrlSigner
 import com.example.data.media.ChatMediaManager
@@ -176,8 +178,29 @@ class ChatMediaController(
         return id to File(MediaFiles.outboxDir(app, id), MediaType.VOICE.fileName)
     }
 
-    fun sendVoice(messageId: String, file: File, durationMs: Long) {
-        enqueue(messageId, MediaType.VOICE, Prepared.Ready(file, null, durationMs), null)
+    /**
+     * Sends a recorded voice message. With [music] the song is mixed in underneath first (on
+     * this phone); if mixing fails, the voice goes out without music and a notice says so.
+     */
+    fun sendVoice(messageId: String, file: File, durationMs: Long, music: VoiceMusic? = null) {
+        if (music == null) {
+            enqueue(messageId, MediaType.VOICE, Prepared.Ready(file, null, durationMs), null)
+            return
+        }
+        scope.launch {
+            _preparing.value = PreparingMedia(MediaType.VOICE, 0)
+            val mixed = withContext(Dispatchers.Default) {
+                val out = File(file.parentFile, "mixed_${file.name}")
+                runCatching {
+                    VoiceMusicMixer.mix(file, music, out)
+                    // The upload expects the standard name, so the mix replaces the recording.
+                    if (!out.renameTo(file)) { out.copyTo(file, overwrite = true); out.delete() }
+                }.onFailure { out.delete() }.isSuccess
+            }
+            _preparing.value = null
+            if (!mixed) _notice.value = "voice_music_failed"
+            enqueue(messageId, MediaType.VOICE, Prepared.Ready(file, null, durationMs), null)
+        }
     }
 
     fun discardVoice(messageId: String) {
