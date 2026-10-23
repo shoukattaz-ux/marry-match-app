@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -121,6 +122,26 @@ fun ChatScreen(
 
     // Chat theme (migration 034): shared by both people; a preview is only on this phone.
     var showThemePicker by remember { mutableStateOf(false) }
+
+    // Incoming messages in the language this user chose for the chat (on-device, ML Kit).
+    val languageStore = remember { com.example.data.translate.ChatLanguageStore(mediaContext) }
+    val translationEngine = remember { com.example.data.translate.MlKitTranslationEngine() }
+    DisposableEffect(translationEngine) { onDispose { translationEngine.close() } }
+    val translationScope = rememberCoroutineScope()
+    val translation = remember(match.id) {
+        com.example.core.translate.ChatTranslationController(translationEngine, translationScope, languageStore.get(match.id))
+    }
+    val chatLanguage by translation.target.collectAsState()
+    val translations by translation.results.collectAsState()
+    val downloadingPack by translation.downloading.collectAsState()
+    val showingOriginal = remember(match.id) { mutableStateMapOf<String, Boolean>() }
+    var showLanguageMenu by remember { mutableStateOf(false) }
+    LaunchedEffect(messages, chatLanguage) {
+        translation.onMessages(
+            messages.filter { it.senderId != user.id && it.type == "text" && it.body.isNotBlank() }
+                .map { com.example.core.translate.IncomingText(it.id, it.body) }
+        )
+    }
     var previewTheme by remember { mutableStateOf<String?>(null) }
     val shownTheme = ChatThemes.find(previewTheme ?: chatState.theme)
     val themeSnackbar = remember { SnackbarHostState() }
@@ -224,6 +245,63 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    // Language for incoming messages; each person chooses their own.
+                    Box {
+                        IconButton(onClick = { showLanguageMenu = true }, modifier = Modifier.testTag("chat_translate")) {
+                            val active = chatLanguage
+                            if (active == null) {
+                                Icon(Icons.Default.Translate, contentDescription = Localization.t("translate_title", lang))
+                            } else {
+                                BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.primary) { Text(active.uppercase()) } }) {
+                                    Icon(
+                                        Icons.Default.Translate,
+                                        contentDescription = Localization.t("translate_title", lang),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = showLanguageMenu,
+                            onDismissRequest = { showLanguageMenu = false },
+                            modifier = Modifier.widthIn(max = 300.dp)
+                        ) {
+                            Text(
+                                Localization.t("translate_title", lang),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                            val choose = { code: String? ->
+                                showLanguageMenu = false
+                                showingOriginal.clear()
+                                languageStore.set(match.id, code)
+                                translation.setTarget(code)
+                            }
+                            DropdownMenuItem(
+                                text = { Text(Localization.t("translate_off", lang)) },
+                                trailingIcon = { if (chatLanguage == null) Icon(Icons.Default.Check, contentDescription = null) },
+                                onClick = { choose(null) },
+                                modifier = Modifier.testTag("chat_translate_off")
+                            )
+                            com.example.core.translate.ChatLanguages.ALL.forEach { l ->
+                                DropdownMenuItem(
+                                    text = { Text("${l.nativeName} · ${l.name(lang)}") },
+                                    trailingIcon = { if (chatLanguage == l.code) Icon(Icons.Default.Check, contentDescription = null) },
+                                    onClick = { choose(l.code) },
+                                    modifier = Modifier.testTag("chat_translate_${l.code}")
+                                )
+                            }
+                            HorizontalDivider()
+                            Text(
+                                String.format(Localization.t("translate_hint", lang), match.matchedUser.displayName) + "\n\n" +
+                                    Localization.t("translate_privacy", lang),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.extendedColors.muted,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
                     IconButton(onClick = { showPrivacyInfoDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.Security,
@@ -297,6 +375,17 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            downloadingPack?.let { code ->
+                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).testTag("translate_downloading")) {
+                    Text(
+                        String.format(Localization.t("translate_downloading", lang), com.example.core.translate.ChatLanguages.name(code, lang)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            }
             // Privacy & Safety Top Ribbon
             Surface(
                 color = MaterialTheme.extendedColors.surfaceVariantSubtle,
@@ -426,10 +515,24 @@ fun ChatScreen(
                     if (msg.type != "text" && msg.media != null) {
                         media.MessageItem(msg, lang) { reportedMessage = it }
                     } else {
+                        val translated = if (isMe) null else translations[msg.id]
                         ChatBubble(
                             message = msg,
                             isMe = isMe,
-                            onLongPress = if (isMe) null else ({ reportedMessage = msg })
+                            onLongPress = if (isMe) null else ({ reportedMessage = msg }),
+                            translation = when (translated) {
+                                is com.example.core.translate.TranslationResult.Translated -> BubbleTranslation(
+                                    text = translated.text,
+                                    fromName = com.example.core.translate.ChatLanguages.name(translated.fromCode, lang),
+                                    showingOriginal = showingOriginal[msg.id] == true,
+                                    onToggle = { showingOriginal[msg.id] = showingOriginal[msg.id] != true },
+                                    lang = lang
+                                )
+                                else -> null
+                            },
+                            onRetryTranslation = if (translated == com.example.core.translate.TranslationResult.Failed)
+                                ({ translation.retryFailed() }) else null,
+                            lang = lang
                         )
                     }
                 }
@@ -788,7 +891,12 @@ object ChatSafety {
 fun ChatBubble(
     message: ChatMessage,
     isMe: Boolean,
-    onLongPress: (() -> Unit)? = null
+    onLongPress: (() -> Unit)? = null,
+    /** The message in the language this user chose, or null when shown as written. */
+    translation: BubbleTranslation? = null,
+    /** Set when the translation failed: the hint under the message tries again. */
+    onRetryTranslation: (() -> Unit)? = null,
+    lang: AppLanguage = AppLanguage.EN
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -808,10 +916,33 @@ fun ChatBubble(
         ) {
             Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                 Text(
-                    text = message.body,
+                    text = if (translation != null && !translation.showingOriginal) translation.text else message.body,
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (isMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (translation != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 4.dp).clickable(onClick = translation.onToggle).testTag("translation_toggle")
+                    ) {
+                        Icon(Icons.Default.Translate, contentDescription = null, tint = MaterialTheme.extendedColors.muted, modifier = Modifier.size(12.dp))
+                        Text(
+                            String.format(Localization.t("translate_from", translation.lang), translation.fromName) + " · " +
+                                Localization.t(if (translation.showingOriginal) "translate_show_translation" else "translate_show_original", translation.lang),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                if (onRetryTranslation != null) {
+                    Text(
+                        Localization.t("translate_failed", lang),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 4.dp).clickable(onClick = onRetryTranslation).testTag("translation_retry")
+                    )
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.align(Alignment.End),
@@ -837,6 +968,15 @@ fun ChatBubble(
         }
     }
 }
+
+/** How a translated incoming message is shown: the translation, with a switch back to the original. */
+class BubbleTranslation(
+    val text: String,
+    val fromName: String,
+    val showingOriginal: Boolean,
+    val onToggle: () -> Unit,
+    val lang: AppLanguage
+)
 
 /** "Have you met in person?" above the input, once it makes sense to ask. */
 @Composable

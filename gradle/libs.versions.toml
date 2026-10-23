@@ -44,6 +44,8 @@ supabaseBom = "3.1.1"
 ktor = "3.0.3"
 kotlinxSerializationJson = "1.8.0"
 mlkitFaceDetection = "16.1.7"
+mlkitTranslate = "17.0.3"
+mlkitLanguageId = "17.0.6"
 workRuntime = "2.10.1"
 media3 = "1.6.1"
 
@@ -106,6 +108,8 @@ supabase-postgrest = { group = "io.github.jan-tennert.supabase", name = "postgre
 supabase-storage = { group = "io.github.jan-tennert.supabase", name = "storage-kt" }
 supabase-realtime = { group = "io.github.jan-tennert.supabase", name = "realtime-kt" }
 mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFaceDetection" }
+mlkit-translate = { group = "com.google.mlkit", name = "translate", version.ref = "mlkitTranslate" }
+mlkit-language-id = { group = "com.google.mlkit", name = "language-id", version.ref = "mlkitLanguageId" }
 ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
