@@ -156,6 +156,8 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
                 put("p_user", userId)
                 put("p_admin", admin)
             })
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             // The database names the reason in its error text.
             val code = ADMIN_ERRORS.firstOrNull { e.message?.contains(it) == true }
