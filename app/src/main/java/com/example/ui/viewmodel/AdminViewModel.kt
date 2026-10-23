@@ -9,6 +9,8 @@ import com.example.data.AdminUser
 import com.example.data.AuditEntry
 import com.example.data.ModerationAction
 import com.example.data.ModerationException
+import com.example.data.SupportApi
+import com.example.data.SupportThread
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,11 +32,15 @@ data class AdminUiState(
     /** Localization key of the last error, or null. */
     val errorKey: String? = null,
     /** Localization key of the last success message, or null. */
-    val doneKey: String? = null
+    val doneKey: String? = null,
+    /** Admin messages: every conversation between an admin and a member. */
+    val supportThreads: List<SupportThread> = emptyList(),
+    /** The conversation shown on screen, or null. */
+    val openThread: SupportThread? = null
 )
 
 /** Moderator panel (blueprint Phase 9): numbers, reports, user search and the audit log. */
-class AdminViewModel(private val api: AdminApi?) : ViewModel() {
+class AdminViewModel(private val api: AdminApi?, private val support: SupportApi? = null) : ViewModel() {
 
     private val _state = MutableStateFlow(AdminUiState())
     val state: StateFlow<AdminUiState> = _state.asStateFlow()
@@ -116,6 +122,51 @@ class AdminViewModel(private val api: AdminApi?) : ViewModel() {
         }
 
     fun clearMessages() = _state.update { it.copy(errorKey = null, doneKey = null) }
+
+    fun loadSupportThreads() {
+        val s = support ?: return
+        _state.update { it.copy(loading = true, errorKey = null) }
+        viewModelScope.launch {
+            try {
+                val threads = s.adminThreads()
+                _state.update { it.copy(loading = false, supportThreads = threads) }
+            } catch (e: Throwable) {
+                _state.update { it.copy(loading = false, errorKey = "admin_load_failed") }
+            }
+        }
+    }
+
+    /** Opens (or starts) this admin's own conversation with [user]. */
+    fun messageUser(user: AdminUser) {
+        val s = support ?: return
+        if (_state.value.workingOn != null) return
+        _state.update { it.copy(workingOn = user.userId, errorKey = null, doneKey = null) }
+        viewModelScope.launch {
+            try {
+                val id = s.openThread(user.userId)
+                val threads = runCatching { s.adminThreads() }.getOrNull() ?: _state.value.supportThreads
+                // A new conversation has no message yet, so it is not in the list until the first one.
+                val thread = threads.firstOrNull { it.threadId == id } ?: SupportThread(
+                    threadId = id,
+                    otherId = user.userId,
+                    name = user.displayName.ifBlank { user.email },
+                    email = user.email,
+                    mine = true
+                )
+                _state.update { it.copy(workingOn = null, supportThreads = threads, openThread = thread) }
+            } catch (e: Throwable) {
+                _state.update { it.copy(workingOn = null, errorKey = "support_error_open") }
+            }
+        }
+    }
+
+    fun openSupportThread(thread: SupportThread) = _state.update { it.copy(openThread = thread) }
+
+    /** Back from a conversation: the list shows its newest message and unread count. */
+    fun closeSupportThread() {
+        _state.update { it.copy(openThread = null) }
+        loadSupportThreads()
+    }
 
     /** Runs one moderation action, then reloads what it changed. */
     private fun act(id: String, doneKey: String, call: suspend (AdminApi) -> Unit) {

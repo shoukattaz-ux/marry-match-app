@@ -96,6 +96,14 @@ class MarryMatchRepository {
     private var _chat: ChatApi? = null
     val chat: ChatApi? get() = _chat
 
+    private var _support: SupportApi? = null
+    /** Admin messages: conversations between an admin and a member. */
+    val support: SupportApi? get() = _support
+
+    // The member's conversations with admins, shown above the matches in the chat list.
+    private val _supportThreads = MutableStateFlow<List<SupportThreadItem>>(emptyList())
+    val supportThreads: StateFlow<List<SupportThreadItem>> = _supportThreads.asStateFlow()
+
     // Signed links for the private profile photos, shared by all services.
     private var _photoLinks: PhotoUrlSigner? = null
 
@@ -212,6 +220,7 @@ class MarryMatchRepository {
                 _profileService = ProfileService(_supabase!!, photoLinks)
                 _discovery = SupabaseDiscoveryService(_supabase!!, photoLinks) { _currentUser.value.id }
                 _chat = SupabaseChatService(_supabase!!) { _currentUser.value.id }
+                _support = SupabaseSupportService(_supabase!!)
                 _admin = SupabaseAdminService(_supabase!!)
                 _account = SupabaseAccountService(_supabase!!) { _currentUser.value.id }
                 _chaperone = SupabaseChaperoneService(_supabase!!)
@@ -580,7 +589,29 @@ class MarryMatchRepository {
         } catch (e: Throwable) {
             Log.w("MarryMatchRepository", "Could not load matches: ${e.message}")
         }
+        loadSupportThreads()
     }
+
+    /** Reloads the member's conversations with admins (with the admin's small photo). */
+    suspend fun loadSupportThreads() {
+        val api = _support ?: return
+        if (_currentUser.value.id.isBlank()) return
+        try {
+            val threads = api.myThreads()
+            val photos = threads.mapNotNull { it.photo }
+            _photoLinks?.urls(photos.map(ProfileService::thumbPathFor) + photos)
+            _supportThreads.value = threads.map { t ->
+                val photo = t.photo?.let { _photoLinks?.url(ProfileService.thumbPathFor(it)) ?: _photoLinks?.url(it) }
+                SupportThreadItem(t, photo, t.lastMessageAt?.let { ChatTime.format(it) }.orEmpty())
+            }
+        } catch (e: Throwable) {
+            Log.w("MarryMatchRepository", "Could not load admin messages: ${e.message}")
+        }
+    }
+
+    /** Signed link for a profile photo path (e.g. a member's photo in the admin panel), or null. */
+    suspend fun profilePhotoUrl(path: String): String? =
+        _photoLinks?.url(ProfileService.thumbPathFor(path)) ?: _photoLinks?.url(path)
 
     /** The Likes You tab is on screen: clear its badge now and remember it on the server. */
     fun onLikesViewed() {
@@ -758,6 +789,7 @@ class MarryMatchRepository {
         _currentUser.value = createEmptyUser()
         _blockedUserIds.value = emptySet()
         _matches.value = emptyList()
+        _supportThreads.value = emptyList()
         _receivedLikesCount.value = 0
         _newLikesCount.value = 0
         _matchCelebration.value = null
