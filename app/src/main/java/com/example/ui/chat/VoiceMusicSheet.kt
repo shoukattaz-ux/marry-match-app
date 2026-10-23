@@ -34,7 +34,7 @@ import com.example.core.AppLanguage
 import com.example.core.Localization
 import com.example.core.media.AudioCodec
 import com.example.core.media.VoiceMusic
-import com.example.core.media.VoiceMusicMath
+import com.example.core.media.AudioUnreadableException
 import com.example.core.media.VoiceMusicMixer
 import com.example.core.media.VoiceRecorder
 import com.example.data.media.ChatMusic
@@ -50,6 +50,7 @@ import kotlin.math.roundToInt
 /** Longest part of a song worth choosing: a voice message is at most 3 minutes. */
 private const val MAX_PART_MS = 180_000L
 private const val TEST_RECORDING_MS = 5_000L
+private const val WAVEFORM_BARS = 120
 
 /** A song being set up in the sheet: its app copy, name, length and waveform. */
 private class LoadedSong(val file: File, val name: String, val durationMs: Long, val waveform: FloatArray)
@@ -83,8 +84,8 @@ fun VoiceMusicSheet(store: VoiceMusicStore, matchId: String, otherName: String, 
         scope.launch {
             val loaded = withContext(Dispatchers.Default) {
                 runCatching {
-                    val pcm = AudioCodec.decode(file)
-                    LoadedSong(file, name, pcm.durationMs, VoiceMusicMath.waveform(pcm.samples, 120))
+                    val durationMs = AudioCodec.durationMs(file) ?: throw AudioUnreadableException()
+                    LoadedSong(file, name, durationMs, AudioCodec.waveform(file, WAVEFORM_BARS, durationMs))
                 }.getOrNull()
             }
             loading = false
@@ -101,7 +102,10 @@ fun VoiceMusicSheet(store: VoiceMusicStore, matchId: String, otherName: String, 
 
     // The song already chosen opens with its part.
     LaunchedEffect(Unit) {
-        initial?.let { m -> File(m.songFile).takeIf { it.isFile }?.let { load(it, m.songName, m.startMs, m.endMs) } }
+        initial?.let { m ->
+            val file = File(m.songFile)
+            if (file.isFile) load(file, m.songName, m.startMs, m.endMs) else error = t("voice_music_missing")
+        }
     }
 
     val pickSong = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -144,10 +148,11 @@ fun VoiceMusicSheet(store: VoiceMusicStore, matchId: String, otherName: String, 
     var testStep by remember { mutableStateOf<String?>(null) }
     val testRecorder = remember { VoiceRecorder(context) }
     val testDir = remember { File(context.cacheDir, "voice_music_test").apply { mkdirs() } }
+    lateinit var askMic: androidx.activity.result.ActivityResultLauncher<String>
     fun runTest() {
         val s = song ?: return
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            error = t("voice_music_test_mic")
+            askMic.launch(Manifest.permission.RECORD_AUDIO)
             return
         }
         stopPlaying()
@@ -171,6 +176,9 @@ fun VoiceMusicSheet(store: VoiceMusicStore, matchId: String, otherName: String, 
             mp.setOnCompletionListener { if (playing == "test") stopPlaying() }
         }
     }
+    askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) runTest() else error = t("voice_music_test_mic")
+    }
     DisposableEffect(Unit) { onDispose { testRecorder.cancel() } }
 
     fun done() {
@@ -178,7 +186,8 @@ fun VoiceMusicSheet(store: VoiceMusicStore, matchId: String, otherName: String, 
         val music = VoiceMusic(s.file.absolutePath, s.name, range.start.toLong(), range.endInclusive.toLong(), volume)
         if (forAllChats) {
             store.setAllChats(music)
-            if (chatSetting is ChatMusic.Own) store.setChat(matchId, ChatMusic.FollowAll)
+            // Choosing music for all chats here also ends this chat's own setting or "no music".
+            if (chatSetting != ChatMusic.FollowAll) store.setChat(matchId, ChatMusic.FollowAll)
         } else {
             store.setChat(matchId, ChatMusic.Own(music))
         }
@@ -293,6 +302,7 @@ fun VoiceMusicSheet(store: VoiceMusicStore, matchId: String, otherName: String, 
                 }
                 if (testStep != null) LinearProgressIndicator(Modifier.fillMaxWidth())
 
+                Text(t("voice_music_rights"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
                 Button(onClick = ::done, enabled = testStep == null && !loading, modifier = Modifier.fillMaxWidth().height(50.dp).testTag("voice_music_done")) {
                     Text(t("voice_music_done"), fontWeight = FontWeight.Bold)
                 }

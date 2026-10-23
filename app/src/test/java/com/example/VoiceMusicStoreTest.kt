@@ -29,7 +29,8 @@ class VoiceMusicStoreTest {
         listOf(
             "voice_music_title", "voice_music_choose", "voice_music_part", "voice_music_volume", "voice_music_where",
             "voice_music_all_chats", "voice_music_only_chat", "voice_music_test", "voice_music_done", "voice_music_failed",
-            "voice_music_mixing", "voice_music_off_all", "voice_music_off_chat", "voice_music_unreadable"
+            "voice_music_mixing", "voice_music_off_all", "voice_music_off_chat", "voice_music_unreadable",
+            "voice_music_missing", "voice_music_rights", "voice_music_test_mic"
         ).forEach { key -> AppLanguage.entries.forEach { assertNotEquals("$it $key", key, Localization.t(key, it)) } }
         assertEquals("Music volume: 15%", String.format(Localization.t("voice_music_volume", AppLanguage.EN), 15))
     }

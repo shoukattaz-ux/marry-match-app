@@ -32,6 +32,7 @@ class MarryMatchApplication : Application(), ImageLoaderFactory {
         work.cancelAllWorkByTag(com.example.data.media.MediaWork.TAG_SEND)
         work.cancelAllWorkByTag(com.example.data.media.MediaWork.TAG_DOWNLOAD)
         com.example.data.media.MediaFiles.outboxRoot(this).deleteRecursively()
+        com.example.data.media.VoiceMusicStore(this).clearAll()
     }
 
     /**

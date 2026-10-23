@@ -32,6 +32,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
@@ -187,9 +189,10 @@ class ChatMediaController(
             enqueue(messageId, MediaType.VOICE, Prepared.Ready(file, null, durationMs), null)
             return
         }
-        scope.launch {
-            _preparing.value = PreparingMedia(MediaType.VOICE, 0)
-            val mixed = withContext(Dispatchers.Default) {
+        _preparing.value = PreparingMedia(MediaType.VOICE, 0)
+        // Not in this screen's scope: leaving the chat while mixing must not lose the message.
+        mixingScope.launch {
+            val mixed = mixingInOrder.withLock {
                 val out = File(file.parentFile, "mixed_${file.name}")
                 runCatching {
                     VoiceMusicMixer.mix(file, music, out)
@@ -197,9 +200,11 @@ class ChatMediaController(
                     if (!out.renameTo(file)) { out.copyTo(file, overwrite = true); out.delete() }
                 }.onFailure { out.delete() }.isSuccess
             }
-            _preparing.value = null
-            if (!mixed) _notice.value = "voice_music_failed"
-            enqueue(messageId, MediaType.VOICE, Prepared.Ready(file, null, durationMs), null)
+            withContext(Dispatchers.Main) {
+                _preparing.value = null
+                if (!mixed) _notice.value = "voice_music_failed"
+                enqueue(messageId, MediaType.VOICE, Prepared.Ready(file, null, durationMs), null)
+            }
         }
     }
 
@@ -296,4 +301,10 @@ class ChatMediaController(
     }
 
     fun close() = scope.cancel()
+
+    private companion object {
+        /** Mixing outlives the chat screen; one at a time keeps voice messages in recording order. */
+        val mixingScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val mixingInOrder = Mutex()
+    }
 }

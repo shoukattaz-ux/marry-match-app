@@ -42,8 +42,8 @@ class VoiceMusicStore(context: Context) {
         else -> decode(raw)?.let { ChatMusic.Own(it) } ?: ChatMusic.FollowAll
     }
 
-    /** The music a voice message in [matchId] gets, or null for none. */
-    fun effective(matchId: String): VoiceMusic? = resolve(chat(matchId), allChats())
+    /** The music a voice message in [matchId] gets, or null for none (also when its song file is gone). */
+    fun effective(matchId: String): VoiceMusic? = resolve(chat(matchId), allChats())?.takeIf { File(it.songFile).isFile }
 
     fun setAllChats(music: VoiceMusic?) {
         prefs.edit().apply { if (music == null) remove(KEY_ALL) else putString(KEY_ALL, encode(music)) }.apply()
@@ -108,6 +108,13 @@ class VoiceMusicStore(context: Context) {
             }
         }
         songsDir.listFiles()?.forEach { if (it.absolutePath !in used) it.delete() }
+    }
+
+    /** After Log Out: the next account on this phone starts without the old one's songs and settings. */
+    fun clearAll() {
+        prefs.edit().clear().apply()
+        songsDir.deleteRecursively()
+        changed()
     }
 
     private fun changed() {

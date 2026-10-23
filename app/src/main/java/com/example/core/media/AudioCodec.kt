@@ -73,7 +73,58 @@ object AudioCodec {
             extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
         }
 
+    /**
+     * Loudness of [buckets] equal slices of a whole song (0..1), read in one pass without
+     * keeping the song in memory (a long song would need well over 100 MB as samples).
+     */
+    fun waveform(file: File, buckets: Int, durationMs: Long, maxMs: Long = 15 * 60_000L): FloatArray {
+        val lengthUs = durationMs.coerceIn(1, maxMs) * 1000.0
+        val peaks = IntArray(buckets)
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.absolutePath)
+            decodeInto(extractor, 0, durationMs, maxMs) { sample, tUs ->
+                val b = (tUs / lengthUs * buckets).toInt().coerceIn(0, buckets - 1)
+                val level = kotlin.math.abs(sample.toInt())
+                if (level > peaks[b]) peaks[b] = level
+            }
+        } catch (e: AudioUnreadableException) {
+            throw e
+        } catch (e: Throwable) {
+            throw AudioUnreadableException(e)
+        } finally {
+            extractor.release()
+        }
+        val top = peaks.maxOrNull()?.takeIf { it > 0 } ?: throw AudioUnreadableException()
+        return FloatArray(buckets) { peaks[it].toFloat() / top }
+    }
+
+    /** Length of an audio file in ms, or null when it cannot be read. */
+    fun durationMs(file: File): Long? = runCatching {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.absolutePath)
+            val track = audioTrack(extractor) ?: return null
+            extractor.getTrackFormat(track).getLong(MediaFormat.KEY_DURATION) / 1000
+        } finally {
+            extractor.release()
+        }
+    }.getOrNull()
+
     private fun decode(extractor: MediaExtractor, startMs: Long, endMs: Long?, maxMs: Long): MonoPcm {
+        val out = ShortBuilder()
+        val rate = decodeInto(extractor, startMs, endMs, maxMs) { sample, _ -> out.add(sample) }
+        if (out.size == 0) throw AudioUnreadableException()
+        return MonoPcm(out.toArray(), rate)
+    }
+
+    /** Receives each mono sample of the chosen part with its time in µs. */
+    private fun interface SampleSink {
+        fun add(sample: Short, timeUs: Double)
+    }
+
+    /** Decodes [startMs]..[endMs] to mono samples for [sink]; returns the sample rate. */
+    private fun decodeInto(extractor: MediaExtractor, startMs: Long, endMs: Long?, maxMs: Long, sink: SampleSink): Int {
         val track = audioTrack(extractor) ?: throw AudioUnreadableException()
         extractor.selectTrack(track)
         val format = extractor.getTrackFormat(track)
@@ -83,7 +134,6 @@ object AudioCodec {
         if (startUs > 0) extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
 
         val codec = MediaCodec.createDecoderByType(mime)
-        val out = ShortBuilder()
         var rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
         var floatPcm = false
@@ -130,7 +180,7 @@ object AudioCodec {
                             while (floats.remaining() >= channels) {
                                 var sum = 0f
                                 repeat(channels) { sum += floats.get() }
-                                if (t >= startUs && t < endUs) out.add((sum / channels * 32767f).toInt().coerceIn(-32768, 32767).toShort())
+                                if (t >= startUs && t < endUs) sink.add((sum / channels * 32767f).toInt().coerceIn(-32768, 32767).toShort(), t - startUs)
                                 t += frameUs
                             }
                         } else {
@@ -138,7 +188,7 @@ object AudioCodec {
                             while (shorts.remaining() >= channels) {
                                 var sum = 0
                                 repeat(channels) { sum += shorts.get() }
-                                if (t >= startUs && t < endUs) out.add((sum / channels).toShort())
+                                if (t >= startUs && t < endUs) sink.add((sum / channels).toShort(), t - startUs)
                                 t += frameUs
                             }
                         }
@@ -151,8 +201,7 @@ object AudioCodec {
             runCatching { codec.stop() }
             codec.release()
         }
-        if (out.size == 0) throw AudioUnreadableException()
-        return MonoPcm(out.toArray(), rate)
+        return rate
     }
 
     /** Writes mono 16-bit [pcm] as AAC-LC in an .m4a file (replaced if it exists). */
