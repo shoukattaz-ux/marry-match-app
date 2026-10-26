@@ -160,24 +160,16 @@ class SupabaseChatService(
         client.postgrest.rpc("mark_messages_read", buildJsonObject { put("p_match", matchId) })
     }
 
-    override fun changes(matchId: String): Flow<ChatMessage> = flow {
-        val channel = client.channel("chat-$matchId")
-        // The flow must be set up before subscribing so no early event is missed.
-        val updates = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+    override fun changes(matchId: String): Flow<ChatMessage> = client.liveChannel("chat-$matchId") {
+        postgresChangeFlow<PostgresAction>(schema = "public") {
             table = "messages"
             filter("match_id", FilterOperator.EQ, matchId)
-        }
-        channel.subscribe()
-        try {
-            emitAll(updates.mapNotNull { action ->
-                when (action) {
-                    is PostgresAction.Insert -> action.decodeRecord<MessageRow>().toChatMessage()
-                    is PostgresAction.Update -> action.decodeRecord<MessageRow>().toChatMessage()
-                    else -> null
-                }
-            })
-        } finally {
-            withContext(NonCancellable) { client.realtime.removeChannel(channel) }
+        }.mapNotNull { action ->
+            when (action) {
+                is PostgresAction.Insert -> action.decodeRecord<MessageRow>().toChatMessage()
+                is PostgresAction.Update -> action.decodeRecord<MessageRow>().toChatMessage()
+                else -> null
+            }
         }
     }
 
@@ -192,23 +184,16 @@ class SupabaseChatService(
             put("p_theme", theme)
         }).decodeAs<ChatThemeState>()
 
-    override fun themeChanges(matchId: String): Flow<ChatThemeState> = flow {
-        val channel = client.channel("theme-$matchId")
-        val updates = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+    override fun themeChanges(matchId: String): Flow<ChatThemeState> = client.liveChannel("theme-$matchId") {
+        postgresChangeFlow<PostgresAction>(schema = "public") {
             table = "chat_themes"
             filter("match_id", FilterOperator.EQ, matchId)
-        }
-        channel.subscribe()
-        try {
-            emitAll(updates.mapNotNull { action ->
-                when (action) {
-                    is PostgresAction.Insert -> action.decodeRecord<ChatThemeState>()
-                    is PostgresAction.Update -> action.decodeRecord<ChatThemeState>()
-                    else -> null
-                }
-            })
-        } finally {
-            withContext(NonCancellable) { client.realtime.removeChannel(channel) }
+        }.mapNotNull { action ->
+            when (action) {
+                is PostgresAction.Insert -> action.decodeRecord<ChatThemeState>()
+                is PostgresAction.Update -> action.decodeRecord<ChatThemeState>()
+                else -> null
+            }
         }
     }
 

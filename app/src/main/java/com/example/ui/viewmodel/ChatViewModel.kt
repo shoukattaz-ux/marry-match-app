@@ -174,6 +174,17 @@ class ChatViewModel(
         }
     }
 
+    /** Loads the latest messages without a loading state (back in the app, or a push for this chat). */
+    fun refresh() {
+        val chat = api ?: return
+        viewModelScope.launch {
+            runCatching { chat.loadMessages(matchId) }.getOrNull()?.let { history ->
+                _state.update { s -> s.copy(messages = merge(s.messages, history), loadFailed = false) }
+                markIncomingRead(history)
+            }
+        }
+    }
+
     fun send(text: String) {
         val body = text.trim()
         val chat = api ?: return

@@ -212,7 +212,10 @@ class MarryMatchRepository {
                     }
                     install(Postgrest)
                     install(Storage)
-                    install(Realtime)
+                    install(Realtime) {
+                        // Join channels with a valid login (renewed first when it is about to expire).
+                        accessToken = { FreshSession.validToken(this) }
+                    }
                     // Renews an expiring login before a call and retries once after a 401 (FreshSession).
                     httpConfig { install(FreshSession.plugin) }
                 }

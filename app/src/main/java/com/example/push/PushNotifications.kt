@@ -195,6 +195,11 @@ object PushNotifications {
 /** Receives pushes and token changes from Firebase. */
 class MarryMatchMessagingService : FirebaseMessagingService() {
 
+    private companion object {
+        /** Pushes about a conversation; the others (likes, matches) always show. */
+        val CONVERSATION_KINDS = setOf("message", "your_turn", "support", "support_reply")
+    }
+
     override fun onNewToken(token: String) {
         (application as? MarryMatchApplication)?.repository?.onPushTokenChanged(token)
     }
@@ -205,7 +210,9 @@ class MarryMatchMessagingService : FirebaseMessagingService() {
         val body = message.notification?.body ?: message.data["body"]
         if (title.isNullOrBlank()) return
         val kind = message.data["kind"].orEmpty()
-        PushNotifications.show(this, title, body.orEmpty(), "${kind}_${message.data["match_id"].orEmpty()}", kind)
+        // The conversation is on screen: it reloads instead of showing a notification above it.
+        val onScreen = kind in CONVERSATION_KINDS && OpenConversation.onPush(message.data["match_id"])
+        if (!onScreen) PushNotifications.show(this, title, body.orEmpty(), "${kind}_${message.data["match_id"].orEmpty()}", kind)
         // Keep the open app in step with what the push announced.
         (application as? MarryMatchApplication)?.repository?.refreshMatches()
         // A new message may be a photo, voice message or video: download it now if the settings allow.

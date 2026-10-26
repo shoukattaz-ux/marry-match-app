@@ -76,6 +76,20 @@ class SupportChatViewModel(
         }
     }
 
+    /** Loads the latest messages without a loading state (back in the app, or a push for it). */
+    fun refresh() {
+        val support = api ?: return
+        viewModelScope.launch {
+            val history = runCatching { support.messages(threadId) }.getOrNull() ?: return@launch
+            _state.update { s ->
+                val byId = LinkedHashMap<String, SupportMessage>()
+                (s.messages + history).forEach { byId[it.id] = it }
+                s.copy(messages = byId.values.sortedBy { it.createdAt }, loadFailed = false)
+            }
+            if (takesPart && history.any { it.senderId != myUserId && it.readAt == null }) markRead()
+        }
+    }
+
     /** A new message or a read receipt, from the live connection or from sending. */
     fun onIncoming(message: SupportMessage) {
         _state.update { s ->

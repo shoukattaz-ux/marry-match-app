@@ -51,6 +51,17 @@ object FreshSession {
         }
     }
 
+    /**
+     * The login token for Realtime channels: renewed first when it is about to expire. The library
+     * otherwise joins with the stored token, which can already be expired after the app was in the
+     * background; the server then refuses the channel and new messages never arrive live.
+     */
+    suspend fun validToken(supabase: SupabaseClient): String? {
+        val session = supabase.auth.currentSessionOrNull() ?: return null
+        if (!expiresSoon(session.expiresAt.epochSeconds, nowSeconds())) return session.accessToken
+        return renew(supabase, session.accessToken) ?: session.accessToken
+    }
+
     /** True when a token ending at [expiresAtSeconds] must be renewed before use. */
     fun expiresSoon(expiresAtSeconds: Long, nowSeconds: Long): Boolean =
         expiresAtSeconds - nowSeconds <= EARLY_SECONDS

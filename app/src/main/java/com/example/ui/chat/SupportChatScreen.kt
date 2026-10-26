@@ -96,6 +96,8 @@ fun SupportChatScreen(
         SupportChatViewModel(target.threadId, target.memberId, myUserId, api, target.canWrite, target.open, target.muted)
     }
     val state by vm.state.collectAsState()
+    // On screen: a push for this conversation reloads it instead of showing a notification.
+    com.example.ui.components.TrackOpenConversation(target.threadId, onReload = vm::refresh)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var text by rememberSaveable(target.threadId) { mutableStateOf("") }

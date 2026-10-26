@@ -51,7 +51,10 @@ private class FakeSupportApi(var me: String = "member") : SupportApi {
         messages += m
         return m
     }
-    override suspend fun markRead(threadId: String) { readCalls++ }
+    override suspend fun markRead(threadId: String) {
+        readCalls++
+        messages.replaceAll { if (it.threadId == threadId && it.senderId != me && it.readAt == null) it.copy(readAt = "2026-10-23T11:00:00Z") else it }
+    }
     override suspend fun setMuted(threadId: String, muted: Boolean) { mutedCalls += muted }
     override fun changes(threadId: String): Flow<SupportMessage> = live
     override suspend fun photoUrl(path: String): String? = "https://x/$path"
@@ -119,6 +122,20 @@ class SupportChatViewModelTest {
         api.live.tryEmit(adminMessage("a2", read = true))  // the same message, now read
         assertEquals(1, vm.state.value.messages.size)
         assertTrue(vm.state.value.messages.single().readAt != null)
+        assertEquals(1, api.readCalls)
+    }
+
+    @Test
+    fun refreshCatchesUpOnMissedMessagesWithoutALoadingState() {
+        val api = FakeSupportApi()
+        val vm = SupportChatViewModel("t1", "member", "member", api, canWrite = true)
+        api.messages += adminMessage("a9")  // arrived while the live connection was down
+        vm.refresh()
+        assertEquals(listOf("a9"), vm.state.value.messages.map { it.id })
+        assertFalse(vm.state.value.loading)
+        assertEquals(1, api.readCalls)
+        vm.refresh()  // nothing new: no duplicate, no extra read call
+        assertEquals(1, vm.state.value.messages.size)
         assertEquals(1, api.readCalls)
     }
 

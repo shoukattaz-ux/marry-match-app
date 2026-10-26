@@ -91,6 +91,8 @@ fun ChatScreen(
         )
     }
     val chatState by chatViewModel.state.collectAsState()
+    // On screen: a push for this chat reloads it instead of showing a notification.
+    com.example.ui.components.TrackOpenConversation(match.id, onReload = chatViewModel::refresh)
     val messages = chatState.messages
 
     // Photos, voice messages and videos (WhatsApp-style, migration 023)

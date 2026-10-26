@@ -137,24 +137,16 @@ class SupabaseSupportService(private val client: SupabaseClient) : SupportApi {
         })
     }
 
-    override fun changes(threadId: String): Flow<SupportMessage> = flow {
-        val channel = client.channel("support-$threadId")
-        // The flow must be set up before subscribing so no early event is missed.
-        val updates = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+    override fun changes(threadId: String): Flow<SupportMessage> = client.liveChannel("support-$threadId") {
+        postgresChangeFlow<PostgresAction>(schema = "public") {
             table = "support_messages"
             filter("thread_id", FilterOperator.EQ, threadId)
-        }
-        channel.subscribe()
-        try {
-            emitAll(updates.mapNotNull { action ->
-                when (action) {
-                    is PostgresAction.Insert -> action.decodeRecord<SupportMessage>()
-                    is PostgresAction.Update -> action.decodeRecord<SupportMessage>()
-                    else -> null
-                }
-            })
-        } finally {
-            withContext(NonCancellable) { client.realtime.removeChannel(channel) }
+        }.mapNotNull { action ->
+            when (action) {
+                is PostgresAction.Insert -> action.decodeRecord<SupportMessage>()
+                is PostgresAction.Update -> action.decodeRecord<SupportMessage>()
+                else -> null
+            }
         }
     }
 
