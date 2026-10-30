@@ -70,6 +70,13 @@ private class FakeAdminApi : AdminApi {
         users += AdminUser("new-${createdAccounts.size}", account.details.name, email = account.details.email, emailConfirmed = true)
     }
 
+    val boosts = mutableListOf<Pair<String, Int>>()
+    override suspend fun setBoost(userId: String, hours: Int) {
+        if (hours !in 0..720) throw ModerationException("invalid_hours")
+        boosts += userId to hours
+        users.replaceAll { if (it.userId == userId) it.copy(boostUntil = if (hours > 0) "2026-11-01T18:00:00+00:00" else null) else it }
+    }
+
     /** Who is calling: "admin" is the owner. */
     var caller = "admin"
     /** Like admin_set_admin: confirmed e-mail, not banned, the owner stays, only the owner removes admins. */
@@ -260,6 +267,34 @@ class AdminViewModelTest {
         assertEquals("", vm.state.value.create!!.text)
         vm.closeCreate()
         assertNull(vm.state.value.create)
+    }
+
+    @Test
+    fun boostAndEndBoost() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        vm.searchUsers()
+        vm.setBoost(vm.state.value.users.first { it.userId == "bad" }, 72)
+        assertEquals("admin_done_boosted", vm.state.value.doneKey)
+        assertEquals("2026-11-01T18:00:00+00:00", vm.state.value.users.first { it.userId == "bad" }.boostUntil)
+        vm.setBoost(vm.state.value.users.first { it.userId == "bad" }, 0)
+        assertEquals("admin_done_boost_ended", vm.state.value.doneKey)
+        assertNull(vm.state.value.users.first { it.userId == "bad" }.boostUntil)
+        assertEquals(listOf("bad" to 72, "bad" to 0), api.boosts)
+    }
+
+    @Test
+    fun aNewAccountCanStartBoosted() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        val today = java.time.LocalDate.of(2026, 10, 30)
+        vm.openCreate()
+        vm.setCreateText(com.example.core.admin.AccountTemplate.TEMPLATE_EN)
+        vm.checkCreate(today)
+        vm.addCreatePhotos(List(3) { photo() })
+        vm.setCreateBoost(24)
+        vm.createAccount(today)
+        assertEquals(24, api.createdAccounts.single().boostHours)
     }
 
     @Test

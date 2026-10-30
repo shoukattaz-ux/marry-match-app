@@ -86,7 +86,9 @@ data class AdminUser(
     /** The one account above the admins; nobody can take its rights away. */
     @SerialName("is_owner") val isOwner: Boolean = false,
     /** True only when the person searching is the owner and this is another admin. */
-    @SerialName("can_remove_admin") val canRemoveAdmin: Boolean = false
+    @SerialName("can_remove_admin") val canRemoveAdmin: Boolean = false,
+    /** End of a running Boost (more visibility in Discover), or null. */
+    @SerialName("boost_until") val boostUntil: String? = null
 )
 
 @Serializable
@@ -121,6 +123,10 @@ interface AdminApi {
     suspend fun createAccount(account: NewAccount) {
         throw ModerationException("not_available")
     }
+    /** Boosts the profile for [hours] (at most 720); 0 ends the boost. */
+    suspend fun setBoost(userId: String, hours: Int) {
+        throw ModerationException("not_available")
+    }
     suspend fun auditLog(limit: Int = 100): List<AuditEntry>
     suspend fun moderate(action: ModerationAction, userId: String? = null, reportId: String? = null, note: String? = null)
     /** Switches the Germany location check on or off; the server allows admins only and logs it. */
@@ -149,7 +155,12 @@ class NewAccountPhoto(
 )
 
 /** An account an admin creates for someone who asked for it (admin panel → Create). */
-class NewAccount(val details: com.example.core.admin.AccountTemplate.Result, val photos: List<NewAccountPhoto>)
+class NewAccount(
+    val details: com.example.core.admin.AccountTemplate.Result,
+    val photos: List<NewAccountPhoto>,
+    /** Boost from the start for this many hours (0: none). */
+    val boostHours: Int = 0
+)
 
 /** Reasons the database gives for refusing to change admin rights. */
 private val ADMIN_ERRORS = listOf("target_is_owner", "owner_only", "cannot_remove_self", "email_not_confirmed", "user_banned", "user_not_found", "not_allowed")
@@ -207,6 +218,7 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
             put("email", d.email)
             put("password", d.password)
             put("lang", d.language)
+            put("boost_hours", account.boostHours)
             put("terms_version", AppConfig.TERMS_VERSION)
             put("privacy_version", AppConfig.PRIVACY_VERSION)
             put("conduct_version", AppConfig.CONDUCT_VERSION)
@@ -240,6 +252,20 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
             }))
         }
         callFunction("admin-create-account", body.toString())
+    }
+
+    override suspend fun setBoost(userId: String, hours: Int) {
+        try {
+            client.postgrest.rpc("admin_set_boost", buildJsonObject {
+                put("p_user", userId)
+                put("p_hours", hours)
+            })
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val code = listOf("not_allowed", "invalid_hours", "user_not_found").firstOrNull { e.message?.contains(it) == true }
+            throw ModerationException(code ?: "failed")
+        }
     }
 
     override suspend fun moderate(action: ModerationAction, userId: String?, reportId: String?, note: String?) {

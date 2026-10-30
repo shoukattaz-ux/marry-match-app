@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,6 +43,7 @@ import com.example.core.Localization
 import com.example.data.AdminReport
 import com.example.data.AdminStats
 import com.example.data.AdminUser
+import com.example.ui.viewmodel.CreateAccountState
 import com.example.data.AuditEntry
 import com.example.data.MarryMatchRepository
 import com.example.data.SelfieReviewItem
@@ -711,6 +713,7 @@ private fun ConfirmBanDialog(name: String, lang: AppLanguage, onDismiss: () -> U
 private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewModel, myUserId: String) {
     var confirmBan by remember { mutableStateOf<AdminUser?>(null) }
     var confirmAdmin by remember { mutableStateOf<Pair<AdminUser, Boolean>?>(null) }
+    var boostFor by remember { mutableStateOf<AdminUser?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Button(onClick = vm::openCreate, modifier = Modifier.fillMaxWidth().testTag("admin_create_account")) {
             Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -754,7 +757,8 @@ private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewMode
                     UserCard(user, lang, working = state.workingOn == user.userId, actionsEnabled = state.workingOn == null,
                         onBan = { confirmBan = user }, onUnban = { vm.setBanned(user, false, null) },
                         onSetAdmin = { admin -> confirmAdmin = user to admin },
-                        onMessage = if (user.userId != myUserId) ({ vm.messageUser(user) }) else null)
+                        onMessage = if (user.userId != myUserId) ({ vm.messageUser(user) }) else null,
+                        onBoost = { boostFor = user })
                 }
             }
         }
@@ -763,6 +767,12 @@ private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewMode
         ConfirmBanDialog(name = user.displayName, lang = lang, onDismiss = { confirmBan = null }) { note ->
             confirmBan = null
             vm.setBanned(user, true, note)
+        }
+    }
+    boostFor?.let { user ->
+        BoostDialog(user, lang, onDismiss = { boostFor = null }) { hours ->
+            boostFor = null
+            vm.setBoost(user, hours)
         }
     }
     confirmAdmin?.let { (user, admin) ->
@@ -793,7 +803,8 @@ private fun UserCard(
     onUnban: () -> Unit,
     onSetAdmin: (Boolean) -> Unit,
     /** Opens this admin's conversation with the person; null on the admin's own card. */
-    onMessage: (() -> Unit)?
+    onMessage: (() -> Unit)?,
+    onBoost: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -845,11 +856,30 @@ private fun UserCard(
                 Text(badges.joinToString(" • ") { Localization.t(it, lang) }, style = MaterialTheme.typography.labelMedium,
                     color = if (user.isBanned) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
             }
-            if (onMessage != null && !working) {
-                FilledTonalButton(onClick = onMessage, enabled = actionsEnabled, modifier = Modifier.testTag("admin_message_user")) {
-                    Icon(Icons.Default.Forum, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(Localization.t("admin_message_user", lang))
+            user.boostUntil?.let { until ->
+                Text(
+                    "🚀 " + String.format(Localization.t("boost_running", lang), localTime(until)),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("admin_boost_label")
+                )
+            }
+            if (!working) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (onMessage != null) {
+                        FilledTonalButton(onClick = onMessage, enabled = actionsEnabled, modifier = Modifier.testTag("admin_message_user")) {
+                            Icon(Icons.Default.Forum, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(Localization.t("admin_message_user", lang))
+                        }
+                    }
+                    if (!user.isBanned) {
+                        OutlinedButton(onClick = onBoost, enabled = actionsEnabled, modifier = Modifier.testTag("admin_boost")) {
+                            Icon(Icons.Default.RocketLaunch, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(Localization.t("boost_button", lang))
+                        }
+                    }
                 }
             }
             when {
@@ -875,6 +905,38 @@ private fun UserCard(
             }
         }
     }
+}
+
+/** "31.10. 18:00" in the phone's time zone, from a server timestamp. */
+private fun localTime(iso: String): String = runCatching {
+    val instant = java.time.OffsetDateTime.parse(iso).toInstant()
+    java.time.format.DateTimeFormatter.ofPattern("dd.MM. HH:mm").withZone(java.time.ZoneId.systemDefault()).format(instant)
+}.getOrDefault(shortTime(iso))
+
+/** Boost a profile: more people see it and it is shown nearer the top of Discover for a while. */
+@Composable
+private fun BoostDialog(user: AdminUser, lang: AppLanguage, onDismiss: () -> Unit, onChoose: (Int) -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(String.format(Localization.t("boost_title", lang), user.displayName.ifBlank { user.email })) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(Localization.t("boost_explain", lang), style = MaterialTheme.typography.bodyMedium)
+                CreateAccountState.BOOST_CHOICES.forEach { hours ->
+                    OutlinedButton(onClick = { onChoose(hours) }, modifier = Modifier.fillMaxWidth().testTag("boost_choice_$hours")) {
+                        Text(boostLabel(hours, lang))
+                    }
+                }
+                if (user.boostUntil != null) {
+                    TextButton(onClick = { onChoose(0) }, modifier = Modifier.testTag("boost_end")) {
+                        Text(Localization.t("boost_end", lang), color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(Localization.t("cancel", lang)) } }
+    )
 }
 
 /** Every admin conversation: own ones can be answered, others only read. */

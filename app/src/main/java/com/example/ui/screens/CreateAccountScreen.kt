@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -178,7 +179,21 @@ fun CreateAccountScreen(state: CreateAccountState, lang: AppLanguage, vm: AdminV
                 Text(t("create_add_photos"))
             }
 
-            // 3. Create
+            // 3. Boost (optional): more visibility in Discover from the start
+            Text(t("create_step_boost"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(t("boost_explain"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                (listOf(0) + CreateAccountState.BOOST_CHOICES).forEach { hours ->
+                    FilterChip(
+                        selected = state.boostHours == hours,
+                        onClick = { vm.setCreateBoost(hours) },
+                        label = { Text(boostLabel(hours, lang)) },
+                        modifier = Modifier.testTag("create_boost_$hours")
+                    )
+                }
+            }
+
+            // 4. Create
             state.errorKey?.let { key ->
                 Text(t(key), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("create_error"))
             }
@@ -280,6 +295,14 @@ private fun Summary(r: AccountTemplate.Result, lang: AppLanguage) {
             }
         }
     }
+}
+
+/** "No boost", "6 hours", "1 day", "3 days", "7 days". */
+fun boostLabel(hours: Int, lang: AppLanguage): String = when {
+    hours <= 0 -> Localization.t("boost_none", lang)
+    hours < 24 -> String.format(Localization.t("boost_hours", lang), hours)
+    hours == 24 -> Localization.t("boost_one_day", lang)
+    else -> String.format(Localization.t("boost_days", lang), hours / 24)
 }
 
 private val TRAIT_FIELD = mapOf(

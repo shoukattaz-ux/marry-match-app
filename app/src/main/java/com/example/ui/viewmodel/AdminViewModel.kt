@@ -24,6 +24,8 @@ data class CreateAccountState(
     val checked: com.example.core.admin.AccountTemplate.Result? = null,
     val photos: List<com.example.data.NewAccountPhoto> = emptyList(),
     val preparingPhotos: Boolean = false,
+    /** Boost the new profile from the start for this many hours (0: no boost). */
+    val boostHours: Int = 0,
     val creating: Boolean = false,
     /** Localization key of the last error, or null. */
     val errorKey: String? = null,
@@ -36,6 +38,8 @@ data class CreateAccountState(
     companion object {
         const val MIN_PHOTOS = 3
         const val MAX_PHOTOS = 6
+        /** Boost lengths offered in the admin panel, in hours: 6 hours, 1, 3 and 7 days. */
+        val BOOST_CHOICES = listOf(6, 24, 72, 168)
     }
 }
 
@@ -197,6 +201,12 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
         it.copy(checked = com.example.core.admin.AccountTemplate.parse(it.text, today), errorKey = null)
     }
 
+    fun setCreateBoost(hours: Int) = updateCreate { it.copy(boostHours = hours) }
+
+    /** Gives [user] more visibility in Discover for [hours]; 0 ends a running boost. */
+    fun setBoost(user: AdminUser, hours: Int) =
+        act(user.userId, if (hours > 0) "admin_done_boosted" else "admin_done_boost_ended") { it.setBoost(user.userId, hours) }
+
     fun setPreparingPhotos(busy: Boolean) = updateCreate { it.copy(preparingPhotos = busy) }
 
     fun addCreatePhotos(photos: List<com.example.data.NewAccountPhoto>, failed: Boolean = false) = updateCreate {
@@ -228,7 +238,7 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
         updateCreate { it.copy(creating = true, errorKey = null) }
         viewModelScope.launch {
             val error = try {
-                admin.createAccount(com.example.data.NewAccount(details, form.photos))
+                admin.createAccount(com.example.data.NewAccount(details, form.photos, form.boostHours))
                 null
             } catch (e: ModerationException) {
                 CREATE_ERRORS[e.code] ?: "create_srv_failed"
