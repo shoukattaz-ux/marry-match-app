@@ -5,7 +5,9 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //        profile: { display_name, birth_date, gender, city, region, ... }, photos: [{ jpeg, thumb?, blurred?, focus_x, focus_y, zoom }] }
 // (photos as base64). Only admins may call it. The login works at once: the e-mail counts as
 // confirmed and no e-mail is sent. The sign-up checks of handle_new_user are skipped (gate_bypass),
-// so the pause for new men does not apply; the Germany location check still runs at first login.
+// so the pause for new men does not apply. The admin confirms the person lives in Germany, so the
+// account counts as located (country_ok): the profile is in Discover at once and the person is
+// not asked for the location check.
 // Terms and privacy are recorded as accepted on the person's behalf by the admin, and the whole
 // creation is in the audit log. If any step fails, the half-made account is removed again.
 
@@ -191,6 +193,11 @@ Deno.serve(async (req: Request) => {
     const { error: doneError } = await admin.from("profiles").update({ onboarding_done: true }).eq("id", userId);
     if (doneError) throw new Error("finish: " + doneError.message);
 
+    // Located by the admin's confirmation: Discover only shows located accounts.
+    const { error: statusError } = await admin.from("user_status")
+      .update({ country_ok: true, geo_checked_at: new Date().toISOString() }).eq("user_id", userId);
+    if (statusError) throw new Error("status: " + statusError.message);
+
     // Accepted on the person's behalf when the admin tapped Create.
     const consents = [
       { user_id: userId, consent_type: "terms", version: body.terms_version },
@@ -205,7 +212,7 @@ Deno.serve(async (req: Request) => {
 
     await admin.from("audit_log").insert({
       actor_id: actor.id, action: "account_created", target_user: userId,
-      details: { email, photos: photos.length, consent: "accepted_by_admin_on_request" },
+      details: { email, photos: photos.length, consent: "accepted_by_admin_on_request", located_by: "admin" },
     });
   } catch (e) {
     // Remove the half-made account so the same e-mail can be used again.
