@@ -137,7 +137,16 @@ interface AdminApi {
 class ModerationException(val code: String) : Exception(code)
 
 /** One profile photo prepared on the phone (as for the normal profile): photo, small copy, blurred copy. */
-class NewAccountPhoto(val jpeg: ByteArray, val thumb: ByteArray?, val blurred: ByteArray?, val focusX: Float, val focusY: Float, val zoom: Float)
+class NewAccountPhoto(
+    val jpeg: ByteArray,
+    val thumb: ByteArray?,
+    val blurred: ByteArray?,
+    val focusX: Float,
+    val focusY: Float,
+    val zoom: Float,
+    /** Faces found on the phone, or null when the check could not run. */
+    val faceCount: Int? = null
+)
 
 /** An account an admin creates for someone who asked for it (admin panel → Create). */
 class NewAccount(val details: com.example.core.admin.AccountTemplate.Result, val photos: List<NewAccountPhoto>)

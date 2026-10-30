@@ -76,7 +76,7 @@ fun CreateAccountScreen(state: CreateAccountState, lang: AppLanguage, vm: AdminV
                     .getOrNull()
                     ?.let { p ->
                         val f = p.faceFocus ?: PhotoFocus()
-                        NewAccountPhoto(p.jpeg, p.thumb, p.blurred, f.x, f.y, f.zoom)
+                        NewAccountPhoto(p.jpeg, p.thumb, p.blurred, f.x, f.y, f.zoom, p.faceCount)
                     }
             }
             vm.addCreatePhotos(prepared, failed)
@@ -156,6 +156,16 @@ fun CreateAccountScreen(state: CreateAccountState, lang: AppLanguage, vm: AdminV
                         }
                     }
                 }
+            }
+            // Like the normal profile: the main photo should show exactly one face (a warning only,
+            // face detection can miss a good photo; remove and add again to change the order).
+            state.photos.firstOrNull()?.faceCount?.takeIf { it != 1 }?.let { faces ->
+                Text(
+                    t(if (faces == 0) "create_warn_main_no_face" else "create_warn_main_faces"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFB26A00),
+                    modifier = Modifier.testTag("create_face_warning")
+                )
             }
             if (state.preparingPhotos) LinearProgressIndicator(Modifier.fillMaxWidth())
             OutlinedButton(
