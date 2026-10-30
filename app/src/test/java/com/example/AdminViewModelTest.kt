@@ -62,6 +62,14 @@ private class FakeAdminApi : AdminApi {
         (query.isBlank() || it.displayName.contains(query, true) || it.email.contains(query, true)) &&
             (!signedInOnly || it.lastSignInAt != null)
     }
+    val createdAccounts = mutableListOf<com.example.data.NewAccount>()
+    var createRefusal: String? = null
+    override suspend fun createAccount(account: com.example.data.NewAccount) {
+        createRefusal?.let { throw ModerationException(it) }
+        createdAccounts += account
+        users += AdminUser("new-${createdAccounts.size}", account.details.name, email = account.details.email, emailConfirmed = true)
+    }
+
     /** Who is calling: "admin" is the owner. */
     var caller = "admin"
     /** Like admin_set_admin: confirmed e-mail, not banned, the owner stays, only the owner removes admins. */
@@ -223,6 +231,55 @@ class AdminViewModelTest {
         vm.setAdmin(vm.state.value.users.first { it.userId == "admin" }, false)
         assertEquals("admin_error_target_owner", vm.state.value.errorKey)
         assertTrue(vm.state.value.users.first { it.userId == "admin" }.isAdmin)
+    }
+
+    private fun photo() = com.example.data.NewAccountPhoto(byteArrayOf(-1, -40, 1, 2), null, null, 0.5f, 0.4f, 1f)
+
+    @Test
+    fun createAnAccountFromPastedText() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        val today = java.time.LocalDate.of(2026, 10, 30)
+        vm.openCreate()
+        vm.setCreateText(com.example.core.admin.AccountTemplate.TEMPLATE_EN.replace("Religion: Islam", "Religion: "))
+        vm.checkCreate(today)
+        assertTrue(vm.state.value.create!!.checked!!.ok)
+        assertEquals(false, vm.state.value.create!!.canCreate)  // no photos yet
+        vm.addCreatePhotos(listOf(photo(), photo()))
+        assertEquals(false, vm.state.value.create!!.canCreate)  // 2 of at least 3
+        vm.addCreatePhotos(listOf(photo()))
+        assertTrue(vm.state.value.create!!.canCreate)
+        vm.createAccount(today)
+        val created = vm.state.value.create!!.created!!
+        assertEquals("sara.beispiel@gmail.com", created.email)
+        assertEquals("Sommer2026!", created.password)
+        assertEquals("Sara", created.name)
+        assertEquals(3, api.createdAccounts.single().photos.size)
+        assertEquals("", api.createdAccounts.single().details.religion)
+        vm.createAnother()
+        assertEquals("", vm.state.value.create!!.text)
+        vm.closeCreate()
+        assertNull(vm.state.value.create)
+    }
+
+    @Test
+    fun createRefusalsAndLimits() {
+        val api = FakeAdminApi().apply { createRefusal = "email_exists" }
+        val vm = AdminViewModel(api)
+        val today = java.time.LocalDate.of(2026, 10, 30)
+        vm.openCreate()
+        vm.setCreateText(com.example.core.admin.AccountTemplate.TEMPLATE_EN)
+        vm.checkCreate(today)
+        vm.addCreatePhotos(List(7) { photo() })
+        assertEquals(6, vm.state.value.create!!.photos.size)
+        assertEquals("create_err_photo_limit", vm.state.value.create!!.errorKey)
+        vm.createAccount(today)
+        assertEquals("create_srv_email_exists", vm.state.value.create!!.errorKey)
+        assertNull(vm.state.value.create!!.created)
+        // Changing the text needs a new check before creating.
+        vm.setCreateText("Email: x")
+        assertNull(vm.state.value.create!!.checked)
+        assertEquals(false, vm.state.value.create!!.canCreate)
     }
 
     @Test

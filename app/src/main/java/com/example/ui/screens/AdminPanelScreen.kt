@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -79,6 +80,13 @@ fun AdminPanelScreen(
     val me by repository.currentUser.collectAsState()
 
     // An open admin conversation fills the screen; back returns to the panel.
+    // The "Create account" form fills the screen; back returns to the panel.
+    val createForm = state.create
+    if (createForm != null) {
+        CreateAccountScreen(createForm, lang, adminVm)
+        return
+    }
+
     val thread = state.openThread
     if (thread != null) {
         val photo by produceState<String?>(null, thread.photo) { value = thread.photo?.let { repository.profilePhotoUrl(it) } }
@@ -704,6 +712,11 @@ private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewMode
     var confirmBan by remember { mutableStateOf<AdminUser?>(null) }
     var confirmAdmin by remember { mutableStateOf<Pair<AdminUser, Boolean>?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Button(onClick = vm::openCreate, modifier = Modifier.fillMaxWidth().testTag("admin_create_account")) {
+            Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(Localization.t("create_open", lang))
+        }
         OutlinedTextField(
             value = state.userQuery,
             onValueChange = vm::setUserQuery,

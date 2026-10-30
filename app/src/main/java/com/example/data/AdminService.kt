@@ -117,6 +117,10 @@ interface AdminApi {
     suspend fun searchUsers(query: String, signedInOnly: Boolean = false): List<AdminUser>
     /** Makes an account an admin, or a normal user again; the server logs it. */
     suspend fun setAdmin(userId: String, admin: Boolean)
+    /** Creates a complete account (admin-create-account); throws [ModerationException] with the server's reason. */
+    suspend fun createAccount(account: NewAccount) {
+        throw ModerationException("not_available")
+    }
     suspend fun auditLog(limit: Int = 100): List<AuditEntry>
     suspend fun moderate(action: ModerationAction, userId: String? = null, reportId: String? = null, note: String? = null)
     /** Switches the Germany location check on or off; the server allows admins only and logs it. */
@@ -132,6 +136,12 @@ interface AdminApi {
 /** A moderation call refused by the server; [code] is e.g. "report_not_open" or "cannot_moderate_admin". */
 class ModerationException(val code: String) : Exception(code)
 
+/** One profile photo prepared on the phone (as for the normal profile): photo, small copy, blurred copy. */
+class NewAccountPhoto(val jpeg: ByteArray, val thumb: ByteArray?, val blurred: ByteArray?, val focusX: Float, val focusY: Float, val zoom: Float)
+
+/** An account an admin creates for someone who asked for it (admin panel → Create). */
+class NewAccount(val details: com.example.core.admin.AccountTemplate.Result, val photos: List<NewAccountPhoto>)
+
 /** Reasons the database gives for refusing to change admin rights. */
 private val ADMIN_ERRORS = listOf("target_is_owner", "owner_only", "cannot_remove_self", "email_not_confirmed", "user_banned", "user_not_found", "not_allowed")
 
@@ -139,7 +149,8 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        // Creating an account uploads its photos before answering.
+        .readTimeout(90, TimeUnit.SECONDS)
         .build()
 
     override suspend fun stats(): AdminStats =
@@ -180,16 +191,65 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
         client.postgrest.rpc("admin_set_male_signups", buildJsonObject { put("p_paused", paused) })
     }
 
+    override suspend fun createAccount(account: NewAccount) {
+        val d = account.details
+        val b64 = java.util.Base64.getEncoder()
+        val body = buildJsonObject {
+            put("email", d.email)
+            put("password", d.password)
+            put("lang", d.language)
+            put("terms_version", AppConfig.TERMS_VERSION)
+            put("privacy_version", AppConfig.PRIVACY_VERSION)
+            put("conduct_version", AppConfig.CONDUCT_VERSION)
+            put("sensitive_version", AppConfig.SENSITIVE_PROFILE_VERSION)
+            put("profile", buildJsonObject {
+                put("display_name", d.name)
+                put("gender", d.gender)
+                put("birth_date", d.birthDate.toString())
+                put("city", d.city)
+                put("region", d.region)
+                d.heightCm?.let { put("height_cm", it) }
+                if (d.religion.isNotBlank()) put("religion", d.religion)
+                if (d.education.isNotBlank()) put("education", d.education)
+                if (d.occupation.isNotBlank()) put("occupation", d.occupation)
+                if (d.bio.isNotBlank()) put("bio", d.bio)
+                if (d.marriageTimeline.isNotBlank()) put("marriage_timeline", d.marriageTimeline)
+                if (d.wantsChildren.isNotBlank()) put("wants_children", d.wantsChildren)
+                d.traits.forEach { (column, value) -> put(column, value) }
+                put("languages", kotlinx.serialization.json.JsonArray(d.languages.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+                put("interests", kotlinx.serialization.json.JsonArray(d.interests.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+            })
+            put("photos", kotlinx.serialization.json.JsonArray(account.photos.map { ph ->
+                buildJsonObject {
+                    put("jpeg", b64.encodeToString(ph.jpeg))
+                    ph.thumb?.let { put("thumb", b64.encodeToString(it)) }
+                    ph.blurred?.let { put("blurred", b64.encodeToString(it)) }
+                    put("focus_x", ph.focusX)
+                    put("focus_y", ph.focusY)
+                    put("zoom", ph.zoom)
+                }
+            }))
+        }
+        callFunction("admin-create-account", body.toString())
+    }
+
     override suspend fun moderate(action: ModerationAction, userId: String?, reportId: String?, note: String?) {
-        val token = client.auth.currentSessionOrNull()?.accessToken ?: throw IllegalStateException("Not signed in")
         val body = buildJsonObject {
             put("action", action.wire)
             if (userId != null) put("user_id", userId)
             if (reportId != null) put("report_id", reportId)
             if (!note.isNullOrBlank()) put("note", note.trim().take(500))
-        }.toString().toRequestBody("application/json".toMediaType())
+        }.toString()
+        callFunction("moderate-user", body)
+    }
+
+    /** Calls an admin Edge Function as the signed-in admin; a refusal becomes [ModerationException]. */
+    private suspend fun callFunction(name: String, json: String) {
+        // This call does not go through the Supabase client, so renew a login that is about to expire here.
+        val token = FreshSession.validToken(client) ?: throw IllegalStateException("Not signed in")
+        val body = json.toRequestBody("application/json".toMediaType())
         val request = Request.Builder()
-            .url("${AppConfig.SUPABASE_URL}/functions/v1/moderate-user")
+            .url("${AppConfig.SUPABASE_URL}/functions/v1/$name")
             .addHeader("apikey", AppConfig.SUPABASE_ANON_KEY)
             .addHeader("Authorization", "Bearer $token")
             .post(body)

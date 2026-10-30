@@ -17,6 +17,30 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** The "Create account" form: pasted text, what was understood, photos, and the result. */
+data class CreateAccountState(
+    val text: String = "",
+    /** What the last "Check" understood; null until checked or after the text changed. */
+    val checked: com.example.core.admin.AccountTemplate.Result? = null,
+    val photos: List<com.example.data.NewAccountPhoto> = emptyList(),
+    val preparingPhotos: Boolean = false,
+    val creating: Boolean = false,
+    /** Localization key of the last error, or null. */
+    val errorKey: String? = null,
+    /** Login details of the account just created (shown with a copy button). */
+    val created: CreatedAccount? = null
+) {
+    val canCreate: Boolean
+        get() = checked?.ok == true && photos.size in MIN_PHOTOS..MAX_PHOTOS && !creating && !preparingPhotos
+
+    companion object {
+        const val MIN_PHOTOS = 3
+        const val MAX_PHOTOS = 6
+    }
+}
+
+data class CreatedAccount(val name: String, val email: String, val password: String)
+
 data class AdminUiState(
     val stats: AdminStats? = null,
     val reports: List<AdminReport> = emptyList(),
@@ -36,7 +60,9 @@ data class AdminUiState(
     /** Admin messages: every conversation between an admin and a member. */
     val supportThreads: List<SupportThread> = emptyList(),
     /** The conversation shown on screen, or null. */
-    val openThread: SupportThread? = null
+    val openThread: SupportThread? = null,
+    /** The "Create account" form, or null while it is closed. */
+    val create: CreateAccountState? = null
 )
 
 /** Moderator panel (blueprint Phase 9): numbers, reports, user search and the audit log. */
@@ -160,6 +186,75 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
         }
     }
 
+    fun openCreate() = _state.update { it.copy(create = CreateAccountState()) }
+
+    fun closeCreate() = _state.update { it.copy(create = null) }
+
+    fun setCreateText(text: String) = updateCreate { it.copy(text = text, checked = null, errorKey = null) }
+
+    /** Reads the pasted text and shows what was understood. */
+    fun checkCreate(today: java.time.LocalDate = java.time.LocalDate.now()) = updateCreate {
+        it.copy(checked = com.example.core.admin.AccountTemplate.parse(it.text, today), errorKey = null)
+    }
+
+    fun setPreparingPhotos(busy: Boolean) = updateCreate { it.copy(preparingPhotos = busy) }
+
+    fun addCreatePhotos(photos: List<com.example.data.NewAccountPhoto>, failed: Boolean = false) = updateCreate {
+        val all = it.photos + photos
+        it.copy(
+            photos = all.take(CreateAccountState.MAX_PHOTOS),
+            preparingPhotos = false,
+            errorKey = when {
+                failed -> "create_err_photo"
+                all.size > CreateAccountState.MAX_PHOTOS -> "create_err_photo_limit"
+                else -> null
+            }
+        )
+    }
+
+    fun removeCreatePhoto(index: Int) = updateCreate { s -> s.copy(photos = s.photos.filterIndexed { i, _ -> i != index }) }
+
+    /** Creates the account from the checked text and the photos. */
+    fun createAccount(today: java.time.LocalDate = java.time.LocalDate.now()) {
+        val admin = api ?: return
+        val form = _state.value.create ?: return
+        // Read again: what is created is exactly what the box says now.
+        val details = com.example.core.admin.AccountTemplate.parse(form.text, today)
+        if (!details.ok) {
+            updateCreate { it.copy(checked = details) }
+            return
+        }
+        if (!form.canCreate) return
+        updateCreate { it.copy(creating = true, errorKey = null) }
+        viewModelScope.launch {
+            val error = try {
+                admin.createAccount(com.example.data.NewAccount(details, form.photos))
+                null
+            } catch (e: ModerationException) {
+                CREATE_ERRORS[e.code] ?: "create_srv_failed"
+            } catch (e: Throwable) {
+                "create_srv_failed"
+            }
+            updateCreate {
+                if (error == null) {
+                    it.copy(creating = false, created = CreatedAccount(details.name, details.email, details.password))
+                } else {
+                    it.copy(creating = false, errorKey = error)
+                }
+            }
+            if (error == null && _state.value.users.isNotEmpty()) {
+                runCatching { admin.searchUsers(_state.value.userQuery, _state.value.signedInOnly) }
+                    .getOrNull()?.let { users -> _state.update { it.copy(users = users) } }
+            }
+        }
+    }
+
+    /** After a success: an empty form for the next account. */
+    fun createAnother() = _state.update { it.copy(create = CreateAccountState()) }
+
+    private fun updateCreate(change: (CreateAccountState) -> CreateAccountState) =
+        _state.update { s -> s.create?.let { s.copy(create = change(it)) } ?: s }
+
     fun openSupportThread(thread: SupportThread) = _state.update { it.copy(openThread = thread) }
 
     /** Back from a conversation: the list shows its newest message and unread count. */
@@ -169,6 +264,20 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
     }
 
     /** Runs one moderation action, then reloads what it changed. */
+    private companion object {
+        /** Server reasons from admin-create-account to texts. */
+        val CREATE_ERRORS = mapOf(
+            "email_exists" to "create_srv_email_exists",
+            "invalid_email" to "create_err_email",
+            "weak_password" to "create_err_password",
+            "underage" to "create_err_underage",
+            "photos_count" to "create_err_photo_count",
+            "invalid_photo" to "create_err_photo",
+            "too_many" to "create_srv_too_many",
+            "not_allowed" to "create_srv_not_allowed"
+        )
+    }
+
     private fun act(id: String, doneKey: String, call: suspend (AdminApi) -> Unit) {
         val admin = api ?: return
         if (_state.value.workingOn != null) return
