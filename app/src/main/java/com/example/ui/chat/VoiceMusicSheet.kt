@@ -13,7 +13,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
@@ -356,17 +364,89 @@ private fun clock(ms: Long): String = "%d:%02d".format(ms / 60_000, (ms / 1000) 
  * setting comes from. Tapping it opens the sheet.
  */
 @Composable
-fun VoiceMusicChip(music: VoiceMusic, ownForChat: Boolean, lang: AppLanguage, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun VoiceMusicBar(
+    music: VoiceMusic,
+    ownForChat: Boolean,
+    lang: AppLanguage,
+    onEdit: () -> Unit,
+    onTurnOff: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val t: (String) -> String = { Localization.t(it, lang) }
-    AssistChip(
-        onClick = onClick,
-        label = {
-            Text(
-                "🎵 ${music.songName} · ${(music.volume * 100).roundToInt()}% · " + t(if (ownForChat) "voice_music_this_chat" else "voice_music_all_chats"),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    Surface(
+        onClick = onEdit,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+        modifier = modifier.fillMaxWidth().testTag("voice_music_chip")
+    ) {
+        Row(
+            Modifier.padding(start = 10.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                Modifier.size(34.dp).background(MaterialTheme.colorScheme.primary, CircleShape),
+                contentAlignment = Alignment.Center
+            ) { SoundBars(color = MaterialTheme.colorScheme.onPrimary) }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    music.songName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    String.format(
+                        t("voice_music_bar_line"),
+                        (music.volume * 100).roundToInt(),
+                        t(if (ownForChat) "voice_music_this_chat" else "voice_music_all_chats")
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(onClick = onEdit, modifier = Modifier.size(36.dp).testTag("voice_music_edit")) {
+                Icon(Icons.Default.Tune, contentDescription = t("voice_music_edit"), tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+            }
+            IconButton(onClick = onTurnOff, modifier = Modifier.size(36.dp).testTag("voice_music_off")) {
+                Icon(Icons.Default.Close, contentDescription = t("voice_music_turn_off_chat"), tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+}
+
+/** Three small bars moving like an equalizer: music is on (still when animations are switched off). */
+@Composable
+private fun SoundBars(color: androidx.compose.ui.graphics.Color) {
+    val context = LocalContext.current
+    val animate = remember {
+        android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+    }
+    val transition = rememberInfiniteTransition(label = "sound_bars")
+    val phases = listOf(0, 180, 360).map { delayMs ->
+        if (animate) {
+            transition.animateFloat(
+                initialValue = 0.35f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(tween(520, delayMillis = delayMs), RepeatMode.Reverse),
+                label = "bar_$delayMs"
+            ).value
+        } else 0.7f
+    }
+    Canvas(Modifier.size(width = 16.dp, height = 14.dp)) {
+        val barWidth = size.width / 5
+        phases.forEachIndexed { i, level ->
+            val h = size.height * level
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(i * barWidth * 2, size.height - h),
+                size = Size(barWidth, h),
+                cornerRadius = CornerRadius(barWidth / 2, barWidth / 2)
             )
-        },
-        modifier = modifier.testTag("voice_music_chip")
-    )
+        }
+    }
 }

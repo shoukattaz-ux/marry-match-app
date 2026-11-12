@@ -86,6 +86,7 @@ class ChatMediaUi internal constructor(
     fun onAttach(choice: AttachChoice) {
         if (blocked) return
         when (choice) {
+            AttachChoice.BACKGROUND_MUSIC -> showMusic = true
             AttachChoice.PHOTO_GALLERY -> pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             AttachChoice.VIDEO_GALLERY -> pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
             AttachChoice.PHOTO_CAMERA, AttachChoice.VIDEO_CAMERA -> {

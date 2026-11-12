@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -59,7 +60,7 @@ fun newCaptureUri(context: Context, extension: String): Uri {
     return FileProvider.getUriForFile(context, "${context.packageName}.files", file)
 }
 
-enum class AttachChoice { PHOTO_GALLERY, PHOTO_CAMERA, VIDEO_GALLERY, VIDEO_CAMERA }
+enum class AttachChoice { PHOTO_GALLERY, PHOTO_CAMERA, VIDEO_GALLERY, VIDEO_CAMERA, BACKGROUND_MUSIC }
 
 @Composable
 fun AttachButton(lang: AppLanguage, enabled: Boolean, onChoose: (AttachChoice) -> Unit) {
@@ -74,7 +75,9 @@ fun AttachButton(lang: AppLanguage, enabled: Boolean, onChoose: (AttachChoice) -
                 Triple(AttachChoice.PHOTO_GALLERY, Icons.Default.PhotoLibrary, "media_pick_photo"),
                 Triple(AttachChoice.PHOTO_CAMERA, Icons.Default.PhotoCamera, "media_take_photo"),
                 Triple(AttachChoice.VIDEO_GALLERY, Icons.Default.VideoLibrary, "media_pick_video"),
-                Triple(AttachChoice.VIDEO_CAMERA, Icons.Default.Videocam, "media_record_video")
+                Triple(AttachChoice.VIDEO_CAMERA, Icons.Default.Videocam, "media_record_video"),
+                // Background music for voice messages (moved here so the input row stays uncluttered).
+                Triple(AttachChoice.BACKGROUND_MUSIC, Icons.Default.MusicNote, "voice_music_title")
             ).forEach { (choice, icon, key) ->
                 DropdownMenuItem(
                     text = { Text(t(key)) },
