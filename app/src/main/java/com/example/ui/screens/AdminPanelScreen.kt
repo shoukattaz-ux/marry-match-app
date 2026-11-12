@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.core.AppLanguage
@@ -189,7 +190,9 @@ fun AdminPanelScreen(
                     locationCheckWorking = state.workingOn == "location_check",
                     onSetLocationCheck = adminVm::setLocationCheck,
                     balanceWorking = state.workingOn == "male_signups",
-                    onSetMaleSignupsPaused = adminVm::setMaleSignupsPaused
+                    onSetMaleSignupsPaused = adminVm::setMaleSignupsPaused,
+                    likeLimitWorking = state.workingOn == "like_limit",
+                    onSetLikeLimit = adminVm::setLikeLimit
                 )
                 AdminTab.SELFIES -> SelfieQueueView(
                     state = queueState,
@@ -233,7 +236,9 @@ private fun AdminOverview(
     locationCheckWorking: Boolean,
     onSetLocationCheck: (Boolean) -> Unit,
     balanceWorking: Boolean,
-    onSetMaleSignupsPaused: (Boolean) -> Unit
+    onSetMaleSignupsPaused: (Boolean) -> Unit,
+    likeLimitWorking: Boolean,
+    onSetLikeLimit: (Int) -> Unit
 ) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -255,6 +260,9 @@ private fun AdminOverview(
             }
             item {
                 GenderBalanceCard(stats = stats, working = balanceWorking, lang = lang, onChange = onSetMaleSignupsPaused)
+            }
+            item {
+                LikeLimitCard(current = stats.dailyLikeLimit, working = likeLimitWorking, lang = lang, onSave = onSetLikeLimit)
             }
             val rows = listOf(
                 listOf("admin_stat_users" to stats.usersTotal, "admin_stat_new_today" to stats.newToday),
@@ -339,6 +347,49 @@ private fun LocationCheckCard(enabled: Boolean, working: Boolean, lang: AppLangu
  * Gender balance: sign-ups of men and women (in total and this week) and the switch that pauses
  * new accounts from men. Pausing asks for confirmation; existing members are never affected.
  */
+/** Free likes per day for every account: − / + and Save (0 = no limit). */
+@Composable
+private fun LikeLimitCard(current: Int, working: Boolean, lang: AppLanguage, onSave: (Int) -> Unit) {
+    val t: (String) -> String = { Localization.t(it, lang) }
+    var value by remember(current) { mutableIntStateOf(current) }
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier.fillMaxWidth().testTag("like_limit_card")
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(t("like_limit_title"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(t("like_limit_desc"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                FilledTonalIconButton(onClick = { value = (value - 1).coerceAtLeast(0) }, enabled = !working && value > 0, modifier = Modifier.testTag("like_limit_minus")) {
+                    Text("−", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    if (value == 0) t("like_limit_unlimited") else value.toString(),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.widthIn(min = 56.dp).testTag("like_limit_value")
+                )
+                FilledTonalIconButton(
+                    onClick = { value = (value + 1).coerceAtMost(AdminViewModel.MAX_LIKE_LIMIT) },
+                    enabled = !working && value < AdminViewModel.MAX_LIKE_LIMIT,
+                    modifier = Modifier.testTag("like_limit_plus")
+                ) { Text("+", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.weight(1f))
+                Button(onClick = { onSave(value) }, enabled = !working && value != current, modifier = Modifier.testTag("like_limit_save")) {
+                    Text(t("like_limit_save"))
+                }
+            }
+            if (working) LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(
+                if (current == 0) t("like_limit_now_unlimited") else String.format(t("like_limit_now"), current),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
 @Composable
 private fun GenderBalanceCard(stats: AdminStats, working: Boolean, lang: AppLanguage, onChange: (Boolean) -> Unit) {
     var confirmPause by remember { mutableStateOf(false) }

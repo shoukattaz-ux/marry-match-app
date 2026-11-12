@@ -41,9 +41,10 @@ data class DiscoveryPrefs(
 data class LikesSummary(val total: Int = 0, val new: Int = 0)
 
 /** Today's set: [total] people were picked, [profiles] are the ones not yet liked or passed. */
-data class DailySet(val total: Int, val profiles: List<UserProfile>)
+/** [likesLeft]: free likes left today (admin setting), or null when there is no limit. */
+data class DailySet(val total: Int, val profiles: List<UserProfile>, val likesLeft: Int? = null)
 
-data class LikeResult(val matched: Boolean, val matchId: String?)
+data class LikeResult(val matched: Boolean, val matchId: String?, val likesLeft: Int? = null)
 
 data class MatchSummary(
     val matchId: String,
@@ -83,7 +84,7 @@ interface DiscoveryApi {
 }
 
 @Serializable
-private data class DailySetDto(val total: Int = 0, val profiles: List<CardDto> = emptyList())
+private data class DailySetDto(val total: Int = 0, val profiles: List<CardDto> = emptyList(), @SerialName("likes_left") val likesLeft: Int? = null)
 
 @Serializable
 private data class CardDto(
@@ -120,7 +121,7 @@ private data class CardPhotoDto(val id: String, val path: String, val focus: Pho
 private data class CardPromptDto(val id: String, val key: String, val answer: String)
 
 @Serializable
-private data class LikeResultDto(val matched: Boolean = false, @SerialName("match_id") val matchId: String? = null)
+private data class LikeResultDto(val matched: Boolean = false, @SerialName("match_id") val matchId: String? = null, @SerialName("likes_left") val likesLeft: Int? = null)
 
 @Serializable
 private data class MatchDto(
@@ -165,7 +166,7 @@ class SupabaseDiscoveryService(
     override suspend fun getDailySet(): DailySet {
         val dto = client.postgrest.rpc("get_daily_set").decodeAs<DailySetDto>()
         photoLinks.urls(dto.profiles.flatMap { c -> c.photos.map { c.shownPath(it.path) } })  // sign all photos in one request
-        return DailySet(total = dto.total, profiles = dto.profiles.map { it.toUserProfile() })
+        return DailySet(total = dto.total, profiles = dto.profiles.map { it.toUserProfile() }, likesLeft = dto.likesLeft)
     }
 
     override suspend fun like(toUserId: String, targetType: String?, targetId: String?, comment: String?): LikeResult {
@@ -175,7 +176,7 @@ class SupabaseDiscoveryService(
             put("p_target_id", targetId?.let { JsonPrimitive(it) } ?: JsonNull)
             put("p_comment", comment?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull)
         }).decodeAs<LikeResultDto>()
-        return LikeResult(result.matched, result.matchId)
+        return LikeResult(result.matched, result.matchId, result.likesLeft)
     }
 
     override suspend fun pass(toUserId: String) {

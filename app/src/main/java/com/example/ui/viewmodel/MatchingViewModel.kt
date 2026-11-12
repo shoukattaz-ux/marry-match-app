@@ -27,7 +27,9 @@ data class DiscoverUiState(
     /** The person just passed, while "Undo" is offered; null otherwise. */
     val lastPassed: UserProfile? = null,
     /** Localization key of an error to show, or null. */
-    val errorKey: String? = null
+    val errorKey: String? = null,
+    /** Free likes left today (admin setting), or null when there is no limit. */
+    val likesLeft: Int? = null
 ) {
     /** Profiles left after the user's filters; filters also shape tomorrow's set on the server. */
     val visible: List<UserProfile> get() = remaining.filter { prefs.accepts(it) }
@@ -76,7 +78,8 @@ class MatchingViewModel(
                         loading = false,
                         total = set.total,
                         remaining = set.profiles.filterNot { p -> p.id in blocked },
-                        prefs = prefs
+                        prefs = prefs,
+                        likesLeft = set.likesLeft
                     )
                 }
             } catch (e: Throwable) {
@@ -93,10 +96,19 @@ class MatchingViewModel(
         viewModelScope.launch {
             try {
                 val result = discovery.like(person.id, target.type, target.id, comment)
+                _uiState.update { it.copy(likesLeft = result.likesLeft) }
                 removeFromSet(person)
                 if (result.matched) repository.onNewMatch(person)
             } catch (e: Throwable) {
-                _uiState.update { it.copy(sending = false, errorKey = "discover_action_failed") }
+                // The free likes for today are used up (admin setting): new ones tomorrow.
+                val limit = e.message.orEmpty().contains("daily_like_limit")
+                _uiState.update {
+                    it.copy(
+                        sending = false,
+                        errorKey = if (limit) "likes_limit_reached" else "discover_action_failed",
+                        likesLeft = if (limit) 0 else it.likesLeft
+                    )
+                }
             }
         }
     }

@@ -46,7 +46,8 @@ private class FakeAdminApi : AdminApi {
         banned = users.count { it.isBanned },
         locationCheck = locationCheck,
         men = 30, women = 12, men7d = 5, women7d = 2,
-        maleSignupsPaused = malePaused
+        maleSignupsPaused = malePaused,
+        dailyLikeLimit = likeLimit
     )
     override suspend fun setMaleSignupsPaused(paused: Boolean) {
         failNext?.let { failNext = null; throw it }
@@ -70,6 +71,11 @@ private class FakeAdminApi : AdminApi {
         users += AdminUser("new-${createdAccounts.size}", account.details.name, email = account.details.email, emailConfirmed = true)
     }
 
+    var likeLimit = 10
+    override suspend fun setLikeLimit(limit: Int) {
+        failNext?.let { failNext = null; throw it }
+        likeLimit = limit
+    }
     val boosts = mutableListOf<Pair<String, Int>>()
     override suspend fun setBoost(userId: String, hours: Int) {
         if (hours !in 0..720) throw ModerationException("invalid_hours")
@@ -267,6 +273,20 @@ class AdminViewModelTest {
         assertEquals("", vm.state.value.create!!.text)
         vm.closeCreate()
         assertNull(vm.state.value.create)
+    }
+
+    @Test
+    fun changingFreeLikesPerDay() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        assertEquals(10, vm.state.value.stats?.dailyLikeLimit)
+        vm.setLikeLimit(5)
+        assertEquals(5, vm.state.value.stats?.dailyLikeLimit)
+        assertEquals("admin_done_like_limit", vm.state.value.doneKey)
+        vm.setLikeLimit(500)  // capped like on the server
+        assertEquals(AdminViewModel.MAX_LIKE_LIMIT, api.likeLimit)
+        vm.setLikeLimit(0)  // no limit
+        assertEquals(0, vm.state.value.stats?.dailyLikeLimit)
     }
 
     @Test

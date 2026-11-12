@@ -82,6 +82,20 @@ fun DiscoverScreen(
                                 )
                             }
                         }
+                        // Free likes left today (only shown when admins set a limit).
+                        state.likesLeft?.takeIf { !state.loading }?.let { left ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (left == 0) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Text(
+                                    text = "♥ " + String.format(t("likes_left_today"), left),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).testTag("discover_likes_left"),
+                                    color = if (left == 0) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
                     }
                 },
                 actions = {

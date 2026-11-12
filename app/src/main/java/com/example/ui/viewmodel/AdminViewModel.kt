@@ -151,6 +151,10 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
             it.setMaleSignupsPaused(paused)
         }
 
+    /** Free likes per day for every account (0 = no limit). */
+    fun setLikeLimit(limit: Int) =
+        act("like_limit", "admin_done_like_limit") { it.setLikeLimit(limit.coerceIn(0, MAX_LIKE_LIMIT)) }
+
     fun clearMessages() = _state.update { it.copy(errorKey = null, doneKey = null) }
 
     fun loadSupportThreads() {
@@ -274,7 +278,9 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
     }
 
     /** Runs one moderation action, then reloads what it changed. */
-    private companion object {
+    companion object {
+        const val MAX_LIKE_LIMIT = 100
+
         /** Server reasons from admin-create-account to texts. */
         val CREATE_ERRORS = mapOf(
             "email_exists" to "create_srv_email_exists",

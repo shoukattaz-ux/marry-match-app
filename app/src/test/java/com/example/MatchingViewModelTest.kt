@@ -29,7 +29,9 @@ import org.robolectric.annotation.Config
 private class FakeDiscoveryApi(
     var set: DailySet,
     val mutualWith: Set<String> = emptySet(),
-    var failNextAction: Boolean = false
+    var failNextAction: Boolean = false,
+    /** Free likes left today like send_like counts them (null: no limit). */
+    var likesLeft: Int? = null
 ) : DiscoveryApi {
     val likes = mutableListOf<Triple<String, LikeTarget, String?>>()
     val passes = mutableListOf<String>()
@@ -38,8 +40,10 @@ private class FakeDiscoveryApi(
     override suspend fun getDailySet() = set
     override suspend fun like(toUserId: String, targetType: String?, targetId: String?, comment: String?): LikeResult {
         if (failNextAction) { failNextAction = false; throw IllegalStateException("offline") }
+        if (likesLeft == 0) throw IllegalStateException("daily_like_limit")
+        likesLeft = likesLeft?.minus(1)
         likes += Triple(toUserId, LikeTarget(targetType, targetId), comment)
-        return LikeResult(matched = toUserId in mutualWith, matchId = if (toUserId in mutualWith) "m-$toUserId" else null)
+        return LikeResult(matched = toUserId in mutualWith, matchId = if (toUserId in mutualWith) "m-$toUserId" else null, likesLeft = likesLeft)
     }
     override suspend fun pass(toUserId: String) {
         if (failNextAction) { failNextAction = false; throw IllegalStateException("offline") }
@@ -93,6 +97,25 @@ class MatchingViewModelTest {
         assertEquals(10, state.total)
         assertEquals("a", state.current?.id)
         assertEquals(3, state.visible.size)
+    }
+
+    @Test
+    fun freeLikesPerDayAreCountedAndTheLimitIsExplained() {
+        val api = FakeDiscoveryApi(DailySet(3, listOf(anna, sophie, lena), likesLeft = 1), likesLeft = 1)
+        val vm = viewModel(api)
+        assertEquals(1, vm.uiState.value.likesLeft)
+        vm.like()
+        assertEquals(0, vm.uiState.value.likesLeft)
+        vm.like()
+        assertEquals("likes_limit_reached", vm.uiState.value.errorKey)
+        assertEquals("s", vm.uiState.value.current?.id)  // still shown: nothing was sent
+        assertEquals(listOf("a"), api.likes.map { it.first })
+    }
+
+    @Test
+    fun withoutALimitNoCounterIsShown() {
+        val vm = viewModel(FakeDiscoveryApi(DailySet(3, listOf(anna, sophie, lena))))
+        assertNull(vm.uiState.value.likesLeft)
     }
 
     @Test

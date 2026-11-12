@@ -43,7 +43,9 @@ data class AdminStats(
     @SerialName("men_7d") val men7d: Int = 0,
     @SerialName("women_7d") val women7d: Int = 0,
     /** New accounts from men are paused to keep the balance; existing members are not affected. */
-    @SerialName("male_signups_paused") val maleSignupsPaused: Boolean = false
+    @SerialName("male_signups_paused") val maleSignupsPaused: Boolean = false,
+    /** Free likes per day for every account (0 = no limit), migration 041. */
+    @SerialName("daily_like_limit") val dailyLikeLimit: Int = 10
 ) {
     /** Men per woman, e.g. 2.5; null while there are no women yet. */
     val menPerWoman: Double? get() = if (women > 0) men.toDouble() / women else null
@@ -121,6 +123,10 @@ interface AdminApi {
     suspend fun setAdmin(userId: String, admin: Boolean)
     /** Creates a complete account (admin-create-account); throws [ModerationException] with the server's reason. */
     suspend fun createAccount(account: NewAccount) {
+        throw ModerationException("not_available")
+    }
+    /** Free likes per day for every account (0 = no limit, at most 100). */
+    suspend fun setLikeLimit(limit: Int) {
         throw ModerationException("not_available")
     }
     /** Boosts the profile for [hours] (at most 720); 0 ends the boost. */
@@ -252,6 +258,10 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
             }))
         }
         callFunction("admin-create-account", body.toString())
+    }
+
+    override suspend fun setLikeLimit(limit: Int) {
+        client.postgrest.rpc("admin_set_like_limit", buildJsonObject { put("p_limit", limit) })
     }
 
     override suspend fun setBoost(userId: String, hours: Int) {
