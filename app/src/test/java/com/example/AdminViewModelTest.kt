@@ -47,7 +47,8 @@ private class FakeAdminApi : AdminApi {
         locationCheck = locationCheck,
         men = 30, women = 12, men7d = 5, women7d = 2,
         maleSignupsPaused = malePaused,
-        dailyLikeLimit = likeLimit
+        dailyLikeLimit = likeLimit,
+        recentlyOnlineMinutes = recentMinutes
     )
     override suspend fun setMaleSignupsPaused(paused: Boolean) {
         failNext?.let { failNext = null; throw it }
@@ -71,6 +72,11 @@ private class FakeAdminApi : AdminApi {
         users += AdminUser("new-${createdAccounts.size}", account.details.name, email = account.details.email, emailConfirmed = true)
     }
 
+    var recentMinutes = 20
+    override suspend fun setRecentMinutes(minutes: Int) {
+        if (minutes !in 3..1440) throw ModerationException("bad_request")
+        recentMinutes = minutes
+    }
     var likeLimit = 10
     override suspend fun setLikeLimit(limit: Int) {
         failNext?.let { failNext = null; throw it }
@@ -273,6 +279,18 @@ class AdminViewModelTest {
         assertEquals("", vm.state.value.create!!.text)
         vm.closeCreate()
         assertNull(vm.state.value.create)
+    }
+
+    @Test
+    fun changingTheRecentlyOnlineTime() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        assertEquals(20, vm.state.value.stats?.recentlyOnlineMinutes)
+        vm.setRecentMinutes(45)
+        assertEquals(45, vm.state.value.stats?.recentlyOnlineMinutes)
+        assertEquals("admin_done_recent_minutes", vm.state.value.doneKey)
+        vm.setRecentMinutes(1)  // kept within 3 minutes to 24 hours, like the server
+        assertEquals(AdminViewModel.MIN_RECENT_MINUTES, api.recentMinutes)
     }
 
     @Test

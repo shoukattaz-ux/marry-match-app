@@ -17,24 +17,41 @@ import com.example.core.AppLanguage
 import com.example.core.Localization
 import com.example.ui.theme.extendedColors
 
-private val ActiveGreen = Color(0xFF2E9E5B)
+/** Online: active in the last 2 minutes. */
+val OnlineGreen = Color(0xFF22C55E)
+/** Recently online: within the time admins set (20 minutes at first). */
+val RecentGreen = Color(0xFF86EFAC)
+/** Offline. */
+val OfflineGray = Color(0xFF9CA3AF)
 
-/** "Active today" / "Active this week"; [activity] is the server value "today" or "week". */
+/** Dot colour and text of a server status ("online", "recent", "offline"); null shows nothing. */
+fun activityStyle(activity: String): Pair<Color, String>? = when (activity) {
+    "online" -> OnlineGreen to "status_online"
+    "recent" -> RecentGreen to "status_recent"
+    "offline" -> OfflineGray to "status_offline"
+    // Older app data until the next reload.
+    "today" -> RecentGreen to "active_today"
+    "week" -> OfflineGray to "active_week"
+    else -> null
+}
+
+/**
+ * Online status with its dot: "Online" (bright green), "Recently online" (pale green) or
+ * "Offline" (gray). Nothing when the person hides their activity (or the viewer does).
+ */
 @Composable
 fun ActivityLabel(activity: String, lang: AppLanguage, onDark: Boolean = false) {
-    val key = when (activity) {
-        "today" -> "active_today"
-        "week" -> "active_week"
-        else -> return
-    }
+    val (color, key) = activityStyle(activity) ?: return
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-        if (activity == "today") {
-            Box(Modifier.size(7.dp).background(ActiveGreen, CircleShape))
-        }
+        Box(Modifier.size(8.dp).background(color, CircleShape))
         Text(
             text = Localization.t(key, lang),
             style = MaterialTheme.typography.bodySmall,
-            color = if (onDark) Color.White.copy(alpha = 0.9f) else MaterialTheme.extendedColors.muted
+            color = when {
+                onDark -> Color.White.copy(alpha = 0.9f)
+                activity == "online" -> OnlineGreen
+                else -> MaterialTheme.extendedColors.muted
+            }
         )
     }
 }
@@ -48,11 +65,9 @@ fun ChatPeerStatus(typing: Boolean, online: Boolean, activity: String, fallback:
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary
         )
-        online -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            Box(Modifier.size(8.dp).background(ActiveGreen, CircleShape))
-            Text(Localization.t("chat_online", lang), style = MaterialTheme.typography.bodySmall, color = ActiveGreen)
-        }
-        activity == "today" || activity == "week" -> ActivityLabel(activity, lang)
+        // Has the chat open right now (live presence): online in any case.
+        online -> ActivityLabel("online", lang)
+        activityStyle(activity) != null -> ActivityLabel(activity, lang)
         else -> Text(fallback, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
     }
 }

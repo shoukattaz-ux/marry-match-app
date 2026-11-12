@@ -192,7 +192,9 @@ fun AdminPanelScreen(
                     balanceWorking = state.workingOn == "male_signups",
                     onSetMaleSignupsPaused = adminVm::setMaleSignupsPaused,
                     likeLimitWorking = state.workingOn == "like_limit",
-                    onSetLikeLimit = adminVm::setLikeLimit
+                    onSetLikeLimit = adminVm::setLikeLimit,
+                    recentWorking = state.workingOn == "recent_minutes",
+                    onSetRecentMinutes = adminVm::setRecentMinutes
                 )
                 AdminTab.SELFIES -> SelfieQueueView(
                     state = queueState,
@@ -238,7 +240,9 @@ private fun AdminOverview(
     balanceWorking: Boolean,
     onSetMaleSignupsPaused: (Boolean) -> Unit,
     likeLimitWorking: Boolean,
-    onSetLikeLimit: (Int) -> Unit
+    onSetLikeLimit: (Int) -> Unit,
+    recentWorking: Boolean,
+    onSetRecentMinutes: (Int) -> Unit
 ) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -263,6 +267,9 @@ private fun AdminOverview(
             }
             item {
                 LikeLimitCard(current = stats.dailyLikeLimit, working = likeLimitWorking, lang = lang, onSave = onSetLikeLimit)
+            }
+            item {
+                RecentlyOnlineCard(current = stats.recentlyOnlineMinutes, working = recentWorking, lang = lang, onSave = onSetRecentMinutes)
             }
             val rows = listOf(
                 listOf("admin_stat_users" to stats.usersTotal, "admin_stat_new_today" to stats.newToday),
@@ -347,6 +354,53 @@ private fun LocationCheckCard(enabled: Boolean, working: Boolean, lang: AppLangu
  * Gender balance: sign-ups of men and women (in total and this week) and the switch that pauses
  * new accounts from men. Pausing asks for confirmation; existing members are never affected.
  */
+/** How long "Recently online" lasts: − / + in 5-minute steps (1 below 10 minutes) and Save. */
+@Composable
+private fun RecentlyOnlineCard(current: Int, working: Boolean, lang: AppLanguage, onSave: (Int) -> Unit) {
+    val t: (String) -> String = { Localization.t(it, lang) }
+    var value by remember(current) { mutableIntStateOf(current) }
+    fun step(up: Boolean) {
+        val size = if ((if (up) value else value - 1) < 10) 1 else 5
+        value = (if (up) value + size else value - size).coerceIn(AdminViewModel.MIN_RECENT_MINUTES, AdminViewModel.MAX_RECENT_MINUTES)
+    }
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier.fillMaxWidth().testTag("recent_minutes_card")
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(t("recent_title"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(t("recent_desc"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+            // The three states as members see them.
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                com.example.ui.components.ActivityLabel("online", lang)
+                com.example.ui.components.ActivityLabel("recent", lang)
+                com.example.ui.components.ActivityLabel("offline", lang)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                FilledTonalIconButton(onClick = { step(false) }, enabled = !working && value > AdminViewModel.MIN_RECENT_MINUTES, modifier = Modifier.testTag("recent_minus")) {
+                    Text("−", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    String.format(t("recent_minutes_value"), value),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.widthIn(min = 72.dp).testTag("recent_value")
+                )
+                FilledTonalIconButton(onClick = { step(true) }, enabled = !working && value < AdminViewModel.MAX_RECENT_MINUTES, modifier = Modifier.testTag("recent_plus")) {
+                    Text("+", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.weight(1f))
+                Button(onClick = { onSave(value) }, enabled = !working && value != current, modifier = Modifier.testTag("recent_save")) {
+                    Text(t("like_limit_save"))
+                }
+            }
+            if (working) LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(String.format(t("recent_now"), current), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
 /** Free likes per day for every account: − / + and Save (0 = no limit). */
 @Composable
 private fun LikeLimitCard(current: Int, working: Boolean, lang: AppLanguage, onSave: (Int) -> Unit) {

@@ -151,6 +151,10 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
             it.setMaleSignupsPaused(paused)
         }
 
+    /** How long "Recently online" is shown after the last activity. */
+    fun setRecentMinutes(minutes: Int) =
+        act("recent_minutes", "admin_done_recent_minutes") { it.setRecentMinutes(minutes.coerceIn(MIN_RECENT_MINUTES, MAX_RECENT_MINUTES)) }
+
     /** Free likes per day for every account (0 = no limit). */
     fun setLikeLimit(limit: Int) =
         act("like_limit", "admin_done_like_limit") { it.setLikeLimit(limit.coerceIn(0, MAX_LIKE_LIMIT)) }
@@ -280,6 +284,8 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
     /** Runs one moderation action, then reloads what it changed. */
     companion object {
         const val MAX_LIKE_LIMIT = 100
+        const val MIN_RECENT_MINUTES = 3
+        const val MAX_RECENT_MINUTES = 1440
 
         /** Server reasons from admin-create-account to texts. */
         val CREATE_ERRORS = mapOf(

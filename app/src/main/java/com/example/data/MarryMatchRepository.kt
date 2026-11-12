@@ -83,6 +83,9 @@ private data class BlockRow(val blocked: String)
 internal fun isRealUserId(id: String): Boolean =
     runCatching { UUID.fromString(id) }.isSuccess && id.length == 36
 
+/** How often the open app reports activity (status "Online" lasts 2 minutes). */
+private const val HEARTBEAT_MS = 60_000L
+
 class MarryMatchRepository {
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
@@ -520,11 +523,28 @@ class MarryMatchRepository {
         if (_authState.value == AuthState.CHAPERONE) _authState.value = AuthState.ONBOARDING
     }
 
-    /** The app was opened or came back to the screen: counts as "active today". */
+    private var heartbeat: kotlinx.coroutines.Job? = null
+
+    /**
+     * The app is on screen: reports activity now and then every minute (heartbeat), so others
+     * see "Online" (active in the last 2 minutes). Stopped by [onAppInactive].
+     */
     fun onAppActive() {
-        val api = _account ?: return
-        if (_currentUser.value.id.isBlank()) return
-        repositoryScope.launch { runCatching { api.touchActivity() } }
+        if (_account == null) return
+        heartbeat?.cancel()
+        heartbeat = repositoryScope.launch {
+            while (true) {
+                val api = _account
+                if (api != null && _currentUser.value.id.isNotBlank()) runCatching { api.touchActivity() }
+                kotlinx.coroutines.delay(HEARTBEAT_MS)
+            }
+        }
+    }
+
+    /** The app left the screen: no more heartbeats, so the status turns "recently online", then "offline". */
+    fun onAppInactive() {
+        heartbeat?.cancel()
+        heartbeat = null
     }
 
     /** Links this phone to the account for pushes (language decides the push texts). */
