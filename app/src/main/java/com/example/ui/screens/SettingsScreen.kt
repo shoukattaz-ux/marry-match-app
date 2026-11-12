@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.FamilyRestroom
 import androidx.compose.material.icons.filled.PermMedia
 import androidx.compose.material.icons.filled.Gavel
@@ -52,9 +54,11 @@ fun SettingsScreen(
     onOpenChaperone: () -> Unit = {},
     onOpenChatMedia: () -> Unit = {},
     onOpenNotificationSounds: () -> Unit = {},
+    onOpenPassword: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val lang by repository.appLanguage.collectAsState()
+    val me by repository.currentUser.collectAsState()
 
     var legalPage by remember { mutableStateOf<LegalPage?>(null) }
     var showDeleteAccount by remember { mutableStateOf(false) }
@@ -94,6 +98,38 @@ fun SettingsScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Account: the login e-mail and the password
+            Text(Localization.t("settings_account", lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Default.Email, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Column {
+                            Text(Localization.t("settings_email", lang), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                            Text(me.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted, modifier = Modifier.testTag("settings_email_value"))
+                        }
+                    }
+                    HorizontalDivider()
+                    Row(
+                        Modifier.fillMaxWidth().clickable(onClick = onOpenPassword).padding(vertical = 12.dp).testTag("settings_password"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(Icons.Default.Key, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(Localization.t("pw_title", lang), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                            Text(Localization.t("pw_update", lang), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+                        }
+                        Text("›", fontSize = 20.sp, color = MaterialTheme.extendedColors.muted)
+                    }
+                }
+            }
+
             // Language Selection
             Text(Localization.t("language", lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Card(

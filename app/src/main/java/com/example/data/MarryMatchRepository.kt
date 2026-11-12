@@ -24,6 +24,9 @@ import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.storage.Storage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -743,6 +746,61 @@ class MarryMatchRepository {
         } catch (e: Throwable) {
             Log.e("MarryMatchRepository", "Supabase signInWith failed: ${e.message}", e)
             Result.failure(e)
+        }
+    }
+
+    private val passwordCheckHttp by lazy { okhttp3.OkHttpClient() }
+
+    /** Thrown by [changePassword]; [code] is "wrong_current", "same_password", "weak_password" or "failed". */
+    class PasswordChangeException(val code: String) : Exception(code)
+
+    /**
+     * Changes the signed-in member's password. The current password is checked first with a
+     * separate login request, so the app's own login stays as it is; then the new one is saved.
+     */
+    suspend fun changePassword(current: String, new: String): Result<Unit> {
+        val client = _supabase ?: return Result.failure(IllegalStateException("Supabase is not configured."))
+        val email = client.auth.currentUserOrNull()?.email ?: return Result.failure(PasswordChangeException("failed"))
+        return try {
+            if (!passwordMatches(email, current.trim())) throw PasswordChangeException("wrong_current")
+            client.auth.updateUser { password = new.trim() }
+            Result.success(Unit)
+        } catch (e: PasswordChangeException) {
+            Result.failure(e)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            val msg = e.message.orEmpty().lowercase()
+            Log.w("MarryMatchRepository", "Password change failed: ${e.message}")
+            Result.failure(
+                PasswordChangeException(
+                    when {
+                        "same_password" in msg || "different from the old" in msg -> "same_password"
+                        "weak" in msg || "at least" in msg -> "weak_password"
+                        else -> "failed"
+                    }
+                )
+            )
+        }
+    }
+
+    /** True when [password] is the account's password (a login request that is not kept). */
+    private suspend fun passwordMatches(email: String, password: String): Boolean = withContext(Dispatchers.IO) {
+        val body = kotlinx.serialization.json.buildJsonObject {
+            put("email", kotlinx.serialization.json.JsonPrimitive(email))
+            put("password", kotlinx.serialization.json.JsonPrimitive(password))
+        }.toString()
+        val request = okhttp3.Request.Builder()
+            .url("${AppConfig.SUPABASE_URL}/auth/v1/token?grant_type=password")
+            .addHeader("apikey", AppConfig.SUPABASE_ANON_KEY)
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .build()
+        passwordCheckHttp.newCall(request).execute().use { response ->
+            when {
+                response.isSuccessful -> true
+                response.code == 400 || response.code == 401 -> false
+                else -> throw IllegalStateException("auth_${response.code}")
+            }
         }
     }
 
