@@ -34,9 +34,9 @@ class AuthEmailPagesTest {
             val html = repoFile("supabase/templates/$name.html").readText()
             assertTrue(name, html.contains("{{ .ConfirmationURL }}"))
             assertTrue(name, html.contains("{{ if eq .Data.lang \"de\" }}") && html.contains("{{ else }}") && html.contains("{{ end }}"))
-            assertTrue(name, html.contains("https://shoukattaz-ux.github.io/marry-match-app/logo.png"))
+            // Text-only header: the logo image was removed on request (mail apps showed it wrongly).
+            assertTrue(name, html.contains("MarryMatch") && !html.contains("<img"))
             assertTrue(name, !html.contains("Supabase"))
         }
-        assertTrue(repoFile("docs/logo.png").length() in 5_000L..200_000L)
     }
 }
