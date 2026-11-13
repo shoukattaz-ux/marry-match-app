@@ -55,7 +55,9 @@ data class UserProfile(
     /** How the round avatar shows the main photo (set with "Adjust photo"). */
     val mainPhotoFocus: PhotoFocus = PhotoFocus(),
     /** Framing of each of [photos], same order (avatar, Discover card and gallery). */
-    val photoFocus: List<PhotoFocus> = emptyList()
+    val photoFocus: List<PhotoFocus> = emptyList(),
+    /** Her Signature Card, only while she is selfie-verified (the server leaves it out otherwise). */
+    val signature: SignatureCard? = null
 ) {
     fun focusOf(index: Int): PhotoFocus = photoFocus.getOrNull(index) ?: if (index == 0) mainPhotoFocus else PhotoFocus()
 }

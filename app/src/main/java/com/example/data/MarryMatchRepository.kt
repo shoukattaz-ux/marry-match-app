@@ -102,6 +102,10 @@ class MarryMatchRepository {
     private var _chat: ChatApi? = null
     val chat: ChatApi? get() = _chat
 
+    private var _cards: SignatureCardApi? = null
+    /** The member's own Signature Card (migration 043). */
+    val cards: SignatureCardApi? get() = _cards
+
     private var _support: SupportApi? = null
     /** Admin messages: conversations between an admin and a member. */
     val support: SupportApi? get() = _support
@@ -232,6 +236,7 @@ class MarryMatchRepository {
                 _discovery = SupabaseDiscoveryService(_supabase!!, photoLinks) { _currentUser.value.id }
                 _chat = SupabaseChatService(_supabase!!) { _currentUser.value.id }
                 _support = SupabaseSupportService(_supabase!!)
+                _cards = SupabaseSignatureCardService(_supabase!!)
                 _admin = SupabaseAdminService(_supabase!!)
                 _account = SupabaseAccountService(_supabase!!) { _currentUser.value.id }
                 _chaperone = SupabaseChaperoneService(_supabase!!)

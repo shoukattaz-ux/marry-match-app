@@ -41,6 +41,8 @@ import com.example.model.UserProfile
 import com.example.ui.components.*
 import com.example.ui.theme.extendedColors
 import com.example.ui.viewmodel.LikeTarget
+import com.example.ui.components.SignatureBadge
+import com.example.ui.components.SignatureCardView
 import com.example.ui.viewmodel.MatchingViewModel
 import com.example.ui.viewmodel.OnboardingViewModel
 import kotlinx.coroutines.delay
@@ -399,6 +401,11 @@ fun ProfileHingeCard(
                     )
                 )
                 Column(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)) {
+                    if (profile.signature != null) {
+                        // A Signature Card is waiting further down.
+                        SignatureBadge(lang)
+                        Spacer(Modifier.height(8.dp))
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             text = "${profile.displayName}, ${profile.age}",
@@ -450,6 +457,15 @@ fun ProfileHingeCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.extendedColors.muted,
                     modifier = Modifier.padding(top = 4.dp)
+                )
+                Spacer(Modifier.height(14.dp))
+            }
+
+            profile.signature?.let { card ->
+                SignatureCardView(
+                    card = card,
+                    lang = lang,
+                    onLike = if (preview || card.id.isBlank()) null else ({ if (enabled) onLikeTarget(LikeTarget("card", card.id, t("card_like_label"))) })
                 )
                 Spacer(Modifier.height(14.dp))
             }

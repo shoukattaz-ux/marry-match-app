@@ -48,6 +48,7 @@ import com.example.model.MatchTraits
 import kotlinx.coroutines.launch
 import com.example.ui.components.FocusedPhoto
 import com.example.data.MarryMatchRepository
+import com.example.data.MyCardState
 import com.example.data.SelfieStatus
 import com.example.data.asSeenByOthers
 import com.example.ui.components.*
@@ -63,6 +64,8 @@ fun ProfileScreen(
     onOpenProfileCreation: () -> Unit = {},
     /** Opens the profile editor at a given step (e.g. the habits / interests / values steps). */
     onOpenProfileEditorAt: (Int) -> Unit = { onOpenProfileCreation() },
+    /** Opens the Signature Card editor (women only). */
+    onOpenSignatureCard: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val lang by repository.appLanguage.collectAsState()
@@ -70,6 +73,13 @@ fun ProfileScreen(
     val selfieStatus by repository.selfieStatus.collectAsState()
 
     LaunchedEffect(user.id) { if (user.id.isNotBlank()) repository.loadSelfieStatus() }
+    // Her Signature Card (migration 043), for the entry below and the preview.
+    var myCard by remember { mutableStateOf<MyCardState?>(null) }
+    LaunchedEffect(user.id, user.selfieVerified) {
+        if (user.id.isNotBlank() && user.gender == "woman") {
+            myCard = try { repository.cards?.mine() } catch (e: Exception) { null }
+        }
+    }
 
     var showPhoneFlow by remember { mutableStateOf(false) }
     // Which photo is being adjusted (0 = main photo), or null.
@@ -124,7 +134,7 @@ fun ProfileScreen(
                     }
                     Box(modifier = Modifier.weight(1f).testTag("profile_preview")) {
                         ProfileHingeCard(
-                            profile = user.asSeenByOthers(privacy),
+                            profile = user.asSeenByOthers(privacy).copy(signature = myCard?.takeIf { it.unlocked }?.card),
                             lang = lang,
                             enabled = false,
                             preview = true,
@@ -339,6 +349,15 @@ fun ProfileScreen(
                         }
                     }
                 }
+            }
+
+            if (user.gender == "woman") {
+                SignatureCardEntry(
+                    lang = lang,
+                    unlocked = user.selfieVerified,
+                    hasCard = myCard?.card != null,
+                    onOpen = onOpenSignatureCard
+                )
             }
 
             // Phase 5: Phone Verification Button (hidden behind PHONE_VERIFICATION_ENABLED = false)
@@ -684,6 +703,44 @@ private fun ProfileStrengthCard(
                         Text("+${tip.points}%", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     }
                 }
+            }
+        }
+    }
+}
+
+/** "✦ Your Signature Card is unlocked" (verified) or what verifying unlocks; opens the editor. */
+@Composable
+private fun SignatureCardEntry(lang: AppLanguage, unlocked: Boolean, hasCard: Boolean, onOpen: () -> Unit) {
+    val t: (String) -> String = { Localization.t(it, lang) }
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).testTag("signature_entry")
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF2B1E5C), Color(0xFF7A1C3C))))
+                .padding(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "✦ " + t(if (unlocked) "card_entry_unlocked" else "card_entry_locked"),
+                    style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.components.CardFonts.Playfair),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    t(when { !unlocked -> "card_entry_locked_body"; hasCard -> "card_entry_edit_body"; else -> "card_entry_create_body" }),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.85f)
+                )
+                Text(
+                    t(when { !unlocked -> "card_entry_see"; hasCard -> "card_entry_edit"; else -> "card_entry_create" }) + " →",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFF3DFA2)
+                )
             }
         }
     }

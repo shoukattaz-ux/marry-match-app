@@ -2,6 +2,7 @@ package com.example.data
 
 import com.example.model.MatchTraits
 import com.example.model.PhotoFocus
+import com.example.model.SignatureCard
 import com.example.model.ProfilePrompt
 import com.example.model.PromptCatalog
 import com.example.model.UserProfile
@@ -111,7 +112,8 @@ private data class CardDto(
     @SerialName("photos_blurred") val photosBlurred: Boolean = false,
     val chaperoned: Boolean = false,
     val photos: List<CardPhotoDto> = emptyList(),
-    val prompts: List<CardPromptDto> = emptyList()
+    val prompts: List<CardPromptDto> = emptyList(),
+    val signature: SignatureCard? = null
 )
 
 @Serializable
@@ -304,7 +306,8 @@ class SupabaseDiscoveryService(
             isAdmin = isAdmin,
             activity = active.orEmpty(),
             photosBlurred = photosBlurred,
-            chaperoned = chaperoned
+            chaperoned = chaperoned,
+            signature = signature?.takeIf { it.lookingFor.isNotBlank() }
         )
     }
 

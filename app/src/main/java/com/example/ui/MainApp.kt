@@ -53,7 +53,8 @@ enum class ActiveSubScreen {
     CHAT_MEDIA_SETTINGS,
     NOTIFICATION_SOUNDS,
     SUPPORT_THREAD,
-    CHANGE_PASSWORD
+    CHANGE_PASSWORD,
+    SIGNATURE_CARD
 }
 
 @Composable
@@ -245,6 +246,15 @@ fun MainApp(
                             onBack = { activeSubScreen = ActiveSubScreen.SETTINGS }
                         )
                     }
+                    ActiveSubScreen.SIGNATURE_CARD -> {
+                        com.example.ui.components.ScreenViewModels(key = "signature_card") {
+                            SignatureCardEditorScreen(
+                                repository = repository,
+                                onBack = { activeSubScreen = ActiveSubScreen.NONE },
+                                onOpenVerification = { activeSubScreen = ActiveSubScreen.SELFIE_VERIFICATION }
+                            )
+                        }
+                    }
                     ActiveSubScreen.NONE -> {}
                 }
             } else {
@@ -351,7 +361,8 @@ fun MainApp(
                                     onOpenProfileEditorAt = { step ->
                                         editorStartStep = step
                                         activeSubScreen = ActiveSubScreen.PROFILE_CREATION
-                                    }
+                                    },
+                                    onOpenSignatureCard = { activeSubScreen = ActiveSubScreen.SIGNATURE_CARD }
                                 )
                             }
                         }
