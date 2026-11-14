@@ -130,6 +130,17 @@ fun PrivacySettingsScreen(
                     },
                     testTag = "toggle_blur_photos"
                 )
+                // Silhouette profile: for verified women (migration 049).
+                if (currentUser.gender == "woman") {
+                    HorizontalDivider()
+                    PrivacyToggleRow(
+                        title = Localization.t("privacy_silhouette", lang),
+                        description = Localization.t(if (currentUser.selfieVerified) "privacy_silhouette_desc" else "privacy_silhouette_locked", lang),
+                        checked = privacy.silhouette && currentUser.selfieVerified,
+                        onCheckedChange = { on -> if (currentUser.selfieVerified || !on) change { it.copy(silhouette = on) } },
+                        testTag = "toggle_silhouette"
+                    )
+                }
             }
 
             Text(Localization.t("privacy_section_fields", lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)

@@ -389,12 +389,17 @@ fun ProfileHingeCard(
 
             // Main photo with name, age, city and badges
             Box(modifier = Modifier.fillMaxWidth().height(CardPhotoFrame.MAIN_HEIGHT).clip(RoundedCornerShape(16.dp))) {
-                FocusedPhoto(
-                    model = profile.photos.firstOrNull(),
-                    focus = profile.focusOf(0),
-                    contentDescription = profile.displayName,
-                    modifier = Modifier.fillMaxSize()
-                )
+                if (profile.silhouette || profile.photos.isEmpty()) {
+                    // Silhouette profile: her photos are shown to matches only.
+                    com.example.ui.components.SilhouettePhoto(Modifier.fillMaxSize())
+                } else {
+                    FocusedPhoto(
+                        model = profile.photos.firstOrNull(),
+                        focus = profile.focusOf(0),
+                        contentDescription = profile.displayName,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
                 Box(
                     modifier = Modifier.fillMaxSize().background(
                         Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)), startY = 220f)
@@ -429,7 +434,9 @@ fun ProfileHingeCard(
                 if (profile.photos.isNotEmpty()) {
                     PhotoHeart(enabled, Modifier.align(Alignment.TopEnd)) { onLikeTarget(photoTarget(0)) }
                 }
-                if (profile.photosBlurred) {
+                if (profile.silhouette) {
+                    BlurredPhotosBadge(lang, Modifier.align(Alignment.TopStart), textKey = "silhouette_badge")
+                } else if (profile.photosBlurred) {
                     BlurredPhotosBadge(lang, Modifier.align(Alignment.TopStart))
                 }
             }
@@ -577,7 +584,7 @@ private fun PhotoHeart(enabled: Boolean, modifier: Modifier = Modifier, onClick:
 
 /** Tells the viewer why the photos are blurred and when they become clear. */
 @Composable
-private fun BlurredPhotosBadge(lang: AppLanguage, modifier: Modifier = Modifier) {
+private fun BlurredPhotosBadge(lang: AppLanguage, modifier: Modifier = Modifier, textKey: String = "photos_blurred_badge") {
     Row(
         modifier = modifier
             .padding(12.dp)
@@ -588,7 +595,7 @@ private fun BlurredPhotosBadge(lang: AppLanguage, modifier: Modifier = Modifier)
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-        Text(Localization.t("photos_blurred_badge", lang), style = MaterialTheme.typography.labelMedium.copy(color = Color.White))
+        Text(Localization.t(textKey, lang), style = MaterialTheme.typography.labelMedium.copy(color = Color.White))
     }
 }
 

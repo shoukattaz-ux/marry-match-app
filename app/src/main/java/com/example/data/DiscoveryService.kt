@@ -134,7 +134,8 @@ private data class CardDto(
     val chaperoned: Boolean = false,
     val photos: List<CardPhotoDto> = emptyList(),
     val prompts: List<CardPromptDto> = emptyList(),
-    val signature: SignatureCard? = null
+    val signature: SignatureCard? = null,
+    val silhouette: Boolean = false
 )
 
 @Serializable
@@ -371,7 +372,8 @@ class SupabaseDiscoveryService(
             activity = active.orEmpty(),
             photosBlurred = photosBlurred,
             chaperoned = chaperoned,
-            signature = signature?.takeIf { it.lookingFor.isNotBlank() }
+            signature = signature?.takeIf { it.lookingFor.isNotBlank() },
+            silhouette = silhouette
         )
     }
 

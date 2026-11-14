@@ -236,7 +236,8 @@ private fun LikerCard(
         modifier = modifier.clickable(onClick = onOpen).testTag("liker_card")
     ) {
         Box(Modifier.fillMaxWidth().height(190.dp)) {
-            FocusedPhoto(model = p.photos.firstOrNull(), focus = p.focusOf(0), contentDescription = p.displayName, modifier = Modifier.fillMaxSize())
+            if (p.silhouette || p.photos.isEmpty()) com.example.ui.components.SilhouettePhoto(Modifier.fillMaxSize())
+            else FocusedPhoto(model = p.photos.firstOrNull(), focus = p.focusOf(0), contentDescription = p.displayName, modifier = Modifier.fillMaxSize())
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)), startY = 200f)))
             if (like.isNew) {
                 Surface(shape = RoundedCornerShape(50), color = MaterialTheme.extendedColors.accent, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {

@@ -57,7 +57,9 @@ data class UserProfile(
     /** Framing of each of [photos], same order (avatar, Discover card and gallery). */
     val photoFocus: List<PhotoFocus> = emptyList(),
     /** Her Signature Card, only while she is selfie-verified (the server leaves it out otherwise). */
-    val signature: SignatureCard? = null
+    val signature: SignatureCard? = null,
+    /** A verified woman's silhouette profile: no photos for non-matches (migration 049). */
+    val silhouette: Boolean = false
 ) {
     fun focusOf(index: Int): PhotoFocus = photoFocus.getOrNull(index) ?: if (index == 0) mainPhotoFocus else PhotoFocus()
 }

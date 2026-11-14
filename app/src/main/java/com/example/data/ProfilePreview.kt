@@ -11,5 +11,7 @@ fun UserProfile.asSeenByOthers(privacy: PrivacySettings): UserProfile = copy(
     religion = if (privacy.hideReligion) "" else religion,
     occupation = if (privacy.hideOccupation) "" else occupation,
     activity = if (privacy.hideActivity) "" else "today",
-    photosBlurred = privacy.blurPhotos
-)
+    photosBlurred = privacy.blurPhotos,
+    // Silhouette profile (verified women): others see no photos, like the server sends none.
+    silhouette = privacy.silhouette && gender == "woman" && selfieVerified
+).let { if (it.silhouette) it.copy(photos = emptyList(), photoIds = emptyList(), photoFocus = emptyList()) else it }

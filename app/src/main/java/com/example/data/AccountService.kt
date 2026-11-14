@@ -31,7 +31,9 @@ data class PrivacySettings(
     /** Hides "active today" and live "online / typing"; then the user sees nobody's activity either. */
     @SerialName("hide_activity") val hideActivity: Boolean = false,
     /** Non-matches only get blurred copies of the photos (migration 019). */
-    @SerialName("blur_photos") val blurPhotos: Boolean = false
+    @SerialName("blur_photos") val blurPhotos: Boolean = false,
+    /** Verified women: non-matches see a silhouette instead of the photos (migration 049). */
+    val silhouette: Boolean = false
 )
 
 /** Which pushes the user wants; the database checks these before queuing a push. */
@@ -85,6 +87,7 @@ class SupabaseAccountService(
             put("hide_occupation", settings.hideOccupation)
             put("hide_activity", settings.hideActivity)
             put("blur_photos", settings.blurPhotos)
+            put("silhouette", settings.silhouette)
         }) { filter { eq("id", currentUserId()) } }
     }
 
@@ -139,6 +142,6 @@ class SupabaseAccountService(
     }
 
     companion object {
-        private val COLUMNS = listOf("incognito", "verified_viewers_only", "hide_city", "hide_religion", "hide_occupation", "hide_activity", "blur_photos")
+        private val COLUMNS = listOf("incognito", "verified_viewers_only", "hide_city", "hide_religion", "hide_occupation", "hide_activity", "blur_photos", "silhouette")
     }
 }
