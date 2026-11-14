@@ -13,7 +13,6 @@ import com.example.data.media.ChatMediaManager
 import com.example.data.media.ChatMediaRules
 import com.example.data.media.GallerySaver
 import com.example.data.media.MediaFiles
-import com.example.data.media.MediaSettingsStore
 import com.example.data.media.MediaStatus
 import com.example.data.media.MediaType
 import com.example.data.media.MediaWork
@@ -56,7 +55,6 @@ class ChatMediaController(
 ) {
     private val app = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val settings = MediaSettingsStore(app)
     private val thumbLinks = supabase?.let { PhotoUrlSigner.forBucket(it, ChatMediaRules.BUCKET) }
 
     private val _transfers = MutableStateFlow<Map<String, TransferInfo>>(emptyMap())
@@ -268,19 +266,14 @@ class ChatMediaController(
 
     fun cancelDownload(messageId: String) = ChatMediaManager.cancelDownload(app, messageId)
 
-    /** New received files: download by themselves if Settings > Chat media allows it. */
+    /** New received files always download by themselves (Wi-Fi or mobile data). */
     fun autoDownload(messages: List<ChatMessage>) {
-        val candidates = messages.filter {
+        messages.filter {
             it.senderId != myUserId && it.media?.status == MediaStatus.UPLOADED && it.id !in _transfers.value
-        }
-        if (candidates.isEmpty()) return
-        scope.launch {
-            val current = settings.current()
-            candidates.forEach { message ->
-                val type = MediaType.fromWire(message.type) ?: return@forEach
-                val media = message.media ?: return@forEach
-                ChatMediaManager.autoDownload(app, message.id, matchId, type, media.path, media.bytes, current.forType(type))
-            }
+        }.forEach { message ->
+            val type = MediaType.fromWire(message.type) ?: return@forEach
+            val media = message.media ?: return@forEach
+            ChatMediaManager.autoDownload(app, message.id, matchId, type, media.path, media.bytes)
         }
     }
 

@@ -50,7 +50,6 @@ enum class ActiveSubScreen {
     PRIVACY_SETTINGS,
     PROFILE_CREATION,
     CHAPERONE,
-    CHAT_MEDIA_SETTINGS,
     NOTIFICATION_SOUNDS,
     SUPPORT_THREAD,
     CHANGE_PASSWORD,
@@ -151,7 +150,6 @@ fun MainApp(
                             onOpenSafety = { activeSubScreen = ActiveSubScreen.SAFETY_CENTER },
                             onOpenPrivacySettings = { activeSubScreen = ActiveSubScreen.PRIVACY_SETTINGS },
                             onOpenChaperone = { activeSubScreen = ActiveSubScreen.CHAPERONE },
-                            onOpenChatMedia = { activeSubScreen = ActiveSubScreen.CHAT_MEDIA_SETTINGS },
                             onOpenNotificationSounds = { activeSubScreen = ActiveSubScreen.NOTIFICATION_SOUNDS },
                             onOpenPassword = { activeSubScreen = ActiveSubScreen.CHANGE_PASSWORD }
                         )
@@ -195,13 +193,6 @@ fun MainApp(
                     ActiveSubScreen.CHAPERONE -> {
                         BackHandler { activeSubScreen = ActiveSubScreen.SETTINGS }
                         ChaperoneScreen(
-                            repository = repository,
-                            onBack = { activeSubScreen = ActiveSubScreen.SETTINGS }
-                        )
-                    }
-                    ActiveSubScreen.CHAT_MEDIA_SETTINGS -> {
-                        BackHandler { activeSubScreen = ActiveSubScreen.SETTINGS }
-                        ChatMediaSettingsScreen(
                             repository = repository,
                             onBack = { activeSubScreen = ActiveSubScreen.SETTINGS }
                         )

@@ -1,8 +1,6 @@
 package com.example
 
-import com.example.data.media.AutoDownload
 import com.example.data.media.ChatMediaRules
-import com.example.data.media.MediaAutoDownloadSettings
 import com.example.data.media.MediaStatus
 import com.example.data.media.MediaType
 import com.example.data.media.MediaUiLogic
@@ -85,16 +83,6 @@ class ChatMediaLogicTest {
         val mb = 1024L * 1024
         assertTrue(ChatMediaRules.hasRoomFor(5 * mb, 100 * mb))
         assertFalse(ChatMediaRules.hasRoomFor(5 * mb, 10 * mb))
-    }
-
-    @Test
-    fun defaultAutoDownloadSettingsMatchTheSpec() {
-        val d = MediaAutoDownloadSettings()
-        assertEquals(AutoDownload.ANY, d.forType(MediaType.IMAGE))
-        assertEquals(AutoDownload.ANY, d.forType(MediaType.VOICE))
-        assertEquals(AutoDownload.WIFI, d.forType(MediaType.VIDEO))
-        assertEquals(AutoDownload.WIFI, AutoDownload.fromKey("wifi", AutoDownload.NEVER))
-        assertEquals(AutoDownload.NEVER, AutoDownload.fromKey("bogus", AutoDownload.NEVER))
     }
 
     @Test

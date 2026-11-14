@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
         // Coming back to the app counts as being active and starts the online heartbeat (only after login).
         val repository = (application as MarryMatchApplication).repository
         repository.onAppActive()
-        // Received photos, voice messages and videos download per Settings > Chat media.
+        // Received photos, voice messages and videos download by themselves.
         if (repository.authState.value == com.example.data.AuthState.LOGGED_IN) {
             com.example.data.media.ChatMediaManager.sync(this, null)
         }

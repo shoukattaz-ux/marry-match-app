@@ -197,16 +197,15 @@ class DownloadMediaWorker(context: Context, params: WorkerParameters) : Coroutin
         else Result.retry()
 }
 
-/** Finds received files that are not downloaded yet and starts automatic downloads per the settings. */
+/** Finds received files that are not downloaded yet and starts their automatic downloads. */
 class MediaSyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val remote = applicationContext.mediaRemote() ?: return Result.success()
         val matchId = inputData.getString(MediaWork.KEY_MATCH_ID)
         return try {
-            val settings = MediaSettingsStore(applicationContext).current()
             remote.incomingNotDownloaded(matchId).forEach { item ->
                 val type = MediaType.fromWire(item.type) ?: return@forEach
-                ChatMediaManager.autoDownload(applicationContext, item.id, item.matchId, type, item.mediaPath, item.mediaBytes, settings.forType(type))
+                ChatMediaManager.autoDownload(applicationContext, item.id, item.matchId, type, item.mediaPath, item.mediaBytes)
             }
             Result.success()
         } catch (e: CancellationException) {
@@ -264,15 +263,10 @@ object ChatMediaManager {
         enqueueDownload(context, messageId, matchId, type, path, bytes, NetworkType.CONNECTED, ExistingWorkPolicy.REPLACE)
     }
 
-    /** Automatic download if the setting allows it; Wi-Fi only waits for an unmetered network. */
-    fun autoDownload(context: Context, messageId: String, matchId: String, type: MediaType, path: String, bytes: Long?, setting: AutoDownload) {
-        val network = when (setting) {
-            AutoDownload.NEVER -> return
-            AutoDownload.WIFI -> NetworkType.UNMETERED
-            AutoDownload.ANY -> NetworkType.CONNECTED
-        }
+    /** Automatic download of a received file, on any connection (Wi-Fi or mobile data). */
+    fun autoDownload(context: Context, messageId: String, matchId: String, type: MediaType, path: String, bytes: Long?) {
         if (MediaFiles.hasLocalCopy(context, matchId, messageId, type, bytes)) return
-        enqueueDownload(context, messageId, matchId, type, path, bytes, network, ExistingWorkPolicy.KEEP)
+        enqueueDownload(context, messageId, matchId, type, path, bytes, NetworkType.CONNECTED, ExistingWorkPolicy.KEEP)
     }
 
     private fun enqueueDownload(

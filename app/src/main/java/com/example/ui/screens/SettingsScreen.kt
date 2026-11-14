@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.FamilyRestroom
-import androidx.compose.material.icons.filled.PermMedia
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
@@ -52,7 +51,6 @@ fun SettingsScreen(
     onOpenSafety: () -> Unit,
     onOpenPrivacySettings: () -> Unit = {},
     onOpenChaperone: () -> Unit = {},
-    onOpenChatMedia: () -> Unit = {},
     onOpenNotificationSounds: () -> Unit = {},
     onOpenPassword: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -217,8 +215,6 @@ fun SettingsScreen(
                     SettingNavRow(icon = Icons.Default.Visibility, title = Localization.t("privacy_settings_title", lang), onClick = onOpenPrivacySettings)
                     HorizontalDivider()
                     SettingNavRow(icon = Icons.Default.FamilyRestroom, title = Localization.t("chaperone_title", lang), onClick = onOpenChaperone)
-                    HorizontalDivider()
-                    SettingNavRow(icon = Icons.Default.PermMedia, title = Localization.t("media_settings_title", lang), onClick = onOpenChatMedia)
                     HorizontalDivider()
                     SettingNavRow(icon = Icons.Default.Lock, title = Localization.t("privacy_link", lang), onClick = { legalPage = LegalPage.PRIVACY })
                     HorizontalDivider()

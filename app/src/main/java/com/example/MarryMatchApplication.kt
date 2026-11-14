@@ -21,6 +21,8 @@ class MarryMatchApplication : Application(), ImageLoaderFactory {
         super.onCreate()
         PushNotifications.createChannel(this)
         repository.onSignedOut = ::clearAccountCaches
+        // The Chat media settings were removed (downloads are always automatic): drop their file.
+        java.io.File(filesDir, "datastore/chat_media_settings.preferences_pb").delete()
     }
 
     /** After Log Out: no photos of the old account stay cached, and its chat transfers stop. */
