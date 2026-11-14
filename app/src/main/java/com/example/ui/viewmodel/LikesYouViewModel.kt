@@ -22,9 +22,29 @@ data class LikesYouUiState(
     val openId: String? = null,
     /** Someone is being liked back or passed: their buttons wait. */
     val workingOn: String? = null,
-    val errorKey: String? = null
+    val errorKey: String? = null,
+    /** "Online first" instead of newest first. */
+    val onlineFirst: Boolean = false,
+    /** Only likes that came with a message. */
+    val withMessageOnly: Boolean = false
 ) {
     val open: ReceivedLike? get() = likes.firstOrNull { it.profile.id == openId }
+
+    /** The list as shown: filtered, then sorted (newest first is the server's order). */
+    val shown: List<ReceivedLike>
+        get() {
+            val filtered = if (withMessageOnly) likes.filter { !it.comment.isNullOrBlank() } else likes
+            return if (onlineFirst) filtered.sortedBy { onlineRank(it.profile.activity) } else filtered
+        }
+
+    companion object {
+        /** Online, then recently online, then the rest (stable: newest first within each). */
+        fun onlineRank(activity: String): Int = when (activity) {
+            "online" -> 0
+            "recent", "today" -> 1
+            else -> 2
+        }
+    }
 }
 
 /**
@@ -65,6 +85,10 @@ class LikesYouViewModel(
     fun close() = _state.update { it.copy(openId = null) }
 
     fun clearError() = _state.update { it.copy(errorKey = null) }
+
+    fun setOnlineFirst(on: Boolean) = _state.update { it.copy(onlineFirst = on) }
+
+    fun setWithMessageOnly(on: Boolean) = _state.update { it.copy(withMessageOnly = on) }
 
     fun likeBack(userId: String, comment: String? = null) {
         val api = api ?: return

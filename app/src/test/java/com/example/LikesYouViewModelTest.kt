@@ -140,6 +140,34 @@ class LikesYouViewModelTest {
     }
 
     @Test
+    fun filterWithAMessageAndSortOnlineFirst() {
+        val api = FakeLikesApi().apply {
+            likes += like("omar", "photo", "Lovely smile").let { it.copy(profile = it.profile.copy(activity = "offline")) }
+            likes += like("max").let { it.copy(profile = it.profile.copy(activity = "online")) }
+            likes += like("leo", comment = "Salam!").let { it.copy(profile = it.profile.copy(activity = "recent")) }
+        }
+        val vm = LikesYouViewModel(api)
+        assertEquals(listOf("omar", "max", "leo"), vm.state.value.shown.map { it.profile.id })  // newest first
+        vm.setOnlineFirst(true)
+        assertEquals(listOf("max", "leo", "omar"), vm.state.value.shown.map { it.profile.id })
+        vm.setWithMessageOnly(true)
+        assertEquals(listOf("leo", "omar"), vm.state.value.shown.map { it.profile.id })
+        vm.setOnlineFirst(false)
+        assertEquals(listOf("omar", "leo"), vm.state.value.shown.map { it.profile.id })
+        vm.setWithMessageOnly(false)
+        assertEquals(3, vm.state.value.shown.size)
+    }
+
+    @Test
+    fun newSortAndFilterTextsInBothLanguages() {
+        listOf("likes_you_filter_all", "likes_you_filter_message", "likes_you_sort", "likes_you_sort_newest",
+            "likes_you_sort_online", "likes_you_swipe_hint", "likes_you_none_with_message").forEach {
+            assertNotEquals(it, Localization.t(it, AppLanguage.EN))
+            assertNotEquals(it, Localization.t(it, AppLanguage.DE))
+        }
+    }
+
+    @Test
     fun withoutServerItSaysSo() {
         val vm = LikesYouViewModel(null)
         assertTrue(vm.state.value.loadFailed)

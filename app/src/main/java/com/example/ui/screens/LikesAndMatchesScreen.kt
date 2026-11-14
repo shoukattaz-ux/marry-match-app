@@ -137,35 +137,76 @@ fun LikesYouScreen(
                     OutlinedButton(onClick = { vm.load() }) { Text(t("retry")) }
                 }
                 state.likes.isEmpty() -> LikesYouEmpty(lang, onOpenDiscover)
-                else -> LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize().testTag("likes_you_list")
-                ) {
-                    item {
-                        Text(
-                            LikesYouText.count(state.likes.size, lang),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                else -> Column(Modifier.fillMaxSize()) {
+                    // Filter (All / With a message) and Sort by (newest / online first)
+                    var sortMenu by remember { mutableStateOf(false) }
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = !state.withMessageOnly,
+                            onClick = { vm.setWithMessageOnly(false) },
+                            label = { Text(t("likes_you_filter_all")) },
+                            modifier = Modifier.testTag("likes_filter_all")
                         )
-                        Text(t("likes_you_hint"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
-                    }
-                    items(state.likes.chunked(2), key = { row -> row.first().profile.id }) { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            row.forEach { like ->
-                                LikerCard(
-                                    like = like,
-                                    me = me,
-                                    lang = lang,
-                                    working = state.workingOn == like.profile.id,
-                                    enabled = state.workingOn == null,
-                                    onOpen = { vm.open(like.profile.id) },
-                                    onLikeBack = { vm.likeBack(like.profile.id) },
-                                    onPass = { vm.pass(like.profile.id) },
-                                    modifier = Modifier.weight(1f)
+                        FilterChip(
+                            selected = state.withMessageOnly,
+                            onClick = { vm.setWithMessageOnly(true) },
+                            label = { Text(t("likes_you_filter_message")) },
+                            modifier = Modifier.testTag("likes_filter_message")
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Box {
+                            TextButton(onClick = { sortMenu = true }, modifier = Modifier.testTag("likes_sort")) {
+                                Text(t("likes_you_sort"), color = LikePink, fontWeight = FontWeight.Bold)
+                            }
+                            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(t("likes_you_sort_newest")) },
+                                    leadingIcon = { RadioButton(selected = !state.onlineFirst, onClick = null) },
+                                    onClick = { vm.setOnlineFirst(false); sortMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(t("likes_you_sort_online")) },
+                                    leadingIcon = { RadioButton(selected = state.onlineFirst, onClick = null) },
+                                    onClick = { vm.setOnlineFirst(true); sortMenu = false }
                                 )
                             }
-                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                    Text(
+                        t("likes_you_swipe_hint"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.extendedColors.muted,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    val shown = state.shown
+                    if (shown.isEmpty()) {
+                        Text(
+                            t("likes_you_none_with_message"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.extendedColors.muted,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(32.dp)
+                        )
+                    }
+                    LazyColumn(
+                        contentPadding = PaddingValues(bottom = 16.dp),
+                        modifier = Modifier.fillMaxSize().testTag("likes_you_list")
+                    ) {
+                        items(shown, key = { it.profile.id }) { like ->
+                            SwipeableLikerRow(
+                                like = like,
+                                lang = lang,
+                                working = state.workingOn == like.profile.id,
+                                enabled = state.workingOn == null,
+                                onOpen = { vm.open(like.profile.id) },
+                                onLikeBack = { vm.likeBack(like.profile.id) },
+                                onPass = { vm.pass(like.profile.id) }
+                            )
                         }
                     }
                 }
@@ -215,63 +256,157 @@ private fun LikedWhatBanner(like: com.example.data.ReceivedLike, me: UserProfile
     }
 }
 
+/** The pink of "Liked your photo" and "Sort by". */
+private val LikePink = Color(0xFFE5487A)
+
+/**
+ * One person who liked you: round photo (or silhouette) with the online dot, name and age, city,
+ * what they liked in pink and their message. Tap: full profile. Swipe right: like back (match);
+ * swipe left: pass (they are not told). The ✕ and ♥ buttons do the same for people who do not swipe.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LikerCard(
+private fun SwipeableLikerRow(
     like: com.example.data.ReceivedLike,
-    me: UserProfile,
     lang: AppLanguage,
     working: Boolean,
     enabled: Boolean,
     onOpen: () -> Unit,
     onLikeBack: () -> Unit,
-    onPass: () -> Unit,
-    modifier: Modifier = Modifier
+    onPass: () -> Unit
+) {
+    val t: (String) -> String = { Localization.t(it, lang) }
+    val dismiss = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (enabled) {
+                when (value) {
+                    SwipeToDismissBoxValue.StartToEnd -> onLikeBack()
+                    SwipeToDismissBoxValue.EndToStart -> onPass()
+                    SwipeToDismissBoxValue.Settled -> Unit
+                }
+            }
+            false  // the row leaves the list when the server answered; until then it springs back
+        }
+    )
+    SwipeToDismissBox(
+        state = dismiss,
+        backgroundContent = {
+            val toRight = dismiss.dismissDirection == SwipeToDismissBoxValue.StartToEnd
+            val toLeft = dismiss.dismissDirection == SwipeToDismissBoxValue.EndToStart
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        when {
+                            toRight -> LikePink.copy(alpha = 0.85f)
+                            toLeft -> MaterialTheme.colorScheme.surfaceVariant
+                            else -> Color.Transparent
+                        }
+                    )
+                    .padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = if (toRight) Arrangement.Start else Arrangement.End
+            ) {
+                if (toRight) {
+                    Icon(Icons.Default.Favorite, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(8.dp))
+                    Text(t("likes_you_like_back"), color = Color.White, fontWeight = FontWeight.Bold)
+                } else if (toLeft) {
+                    Text(t("pass"), fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.Default.Close, contentDescription = null)
+                }
+            }
+        },
+        modifier = Modifier.testTag("liker_row")
+    ) {
+        LikerRow(like, lang, working, enabled, onOpen, onLikeBack, onPass)
+    }
+}
+
+@Composable
+private fun LikerRow(
+    like: com.example.data.ReceivedLike,
+    lang: AppLanguage,
+    working: Boolean,
+    enabled: Boolean,
+    onOpen: () -> Unit,
+    onLikeBack: () -> Unit,
+    onPass: () -> Unit
 ) {
     val p = like.profile
     val t: (String) -> String = { Localization.t(it, lang) }
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = modifier.clickable(onClick = onOpen).testTag("liker_card")
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Box(Modifier.fillMaxWidth().height(190.dp)) {
-            if (p.silhouette || p.photos.isEmpty()) com.example.ui.components.SilhouettePhoto(Modifier.fillMaxSize())
-            else FocusedPhoto(model = p.photos.firstOrNull(), focus = p.focusOf(0), contentDescription = p.displayName, modifier = Modifier.fillMaxSize())
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)), startY = 200f)))
-            if (like.isNew) {
-                Surface(shape = RoundedCornerShape(50), color = MaterialTheme.extendedColors.accent, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
-                    Text(t("likes_you_new"), color = Color.Black, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
-                }
+        // Round photo (or silhouette) with the online dot
+        Box(Modifier.size(78.dp)) {
+            Box(Modifier.fillMaxSize().clip(CircleShape)) {
+                if (p.silhouette || p.photos.isEmpty()) com.example.ui.components.SilhouettePhoto(Modifier.fillMaxSize())
+                else FocusedPhoto(model = p.photos.firstOrNull(), focus = p.focusOf(0), contentDescription = p.displayName, modifier = Modifier.fillMaxSize())
             }
-            Column(Modifier.align(Alignment.BottomStart).padding(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("${p.displayName}, ${p.age}", color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false))
-                    VerifiedBadge(selfieVerified = p.selfieVerified, phoneVerified = false, isAdmin = p.isAdmin)
+            com.example.ui.components.activityStyle(p.activity)?.let { (color, _) ->
+                if (p.activity == "online" || p.activity == "recent" || p.activity == "today") {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .size(18.dp)
+                            .background(MaterialTheme.colorScheme.background, CircleShape)
+                            .padding(3.dp)
+                            .background(color, CircleShape)
+                            .testTag("liker_online_dot")
+                    )
                 }
-                if (p.city.isNotBlank()) Text(p.city, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
             }
         }
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(LikesYouText.likedWhat(like, lang), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.extendedColors.accent,
-                fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "${p.displayName} • ${p.age}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                VerifiedBadge(selfieVerified = p.selfieVerified, phoneVerified = false, isAdmin = p.isAdmin)
+                if (like.isNew) Box(Modifier.size(8.dp).background(LikePink, CircleShape).testTag("liker_new_dot"))
+            }
+            val place = listOf(p.city, p.region).filter { it.isNotBlank() }.distinct().joinToString(", ")
+            if (place.isNotBlank()) {
+                Text(place, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.extendedColors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(
+                LikesYouText.likedWhat(like, lang),
+                style = MaterialTheme.typography.bodyMedium,
+                color = LikePink,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             like.comment?.let {
                 Text("“$it”", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
-        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = onPass, enabled = enabled, contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.weight(1f).height(40.dp).testTag("liker_pass")
-            ) { Icon(Icons.Default.Close, contentDescription = t("pass"), modifier = Modifier.size(20.dp)) }
-            Button(
-                onClick = onLikeBack, enabled = enabled, contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.weight(1f).height(40.dp).testTag("liker_like_back")
+        // Buttons for people who do not swipe
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilledIconButton(
+                onClick = onLikeBack,
+                enabled = enabled,
+                colors = IconButtonDefaults.filledIconButtonColors(containerColor = LikePink, contentColor = Color.White),
+                modifier = Modifier.size(40.dp).testTag("liker_like_back")
             ) {
                 if (working) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                 else Icon(Icons.Default.Favorite, contentDescription = t("likes_you_like_back"), modifier = Modifier.size(20.dp))
+            }
+            OutlinedIconButton(onClick = onPass, enabled = enabled, modifier = Modifier.size(40.dp).testTag("liker_pass")) {
+                Icon(Icons.Default.Close, contentDescription = t("pass"), modifier = Modifier.size(20.dp))
             }
         }
     }
