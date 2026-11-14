@@ -177,7 +177,9 @@ class NewAccount(
     val details: com.example.core.admin.AccountTemplate.Result,
     val photos: List<NewAccountPhoto>,
     /** Boost from the start for this many hours (0: none). */
-    val boostHours: Int = 0
+    val boostHours: Int = 0,
+    /** Created as selfie-verified (blue tick), confirmed by the admin. */
+    val verified: Boolean = false
 )
 
 /** Reasons the database gives for refusing to change admin rights. */
@@ -237,6 +239,7 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
             put("password", d.password)
             put("lang", d.language)
             put("boost_hours", account.boostHours)
+            put("verified", account.verified)
             put("terms_version", AppConfig.TERMS_VERSION)
             put("privacy_version", AppConfig.PRIVACY_VERSION)
             put("conduct_version", AppConfig.CONDUCT_VERSION)

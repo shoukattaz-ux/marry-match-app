@@ -26,6 +26,8 @@ data class CreateAccountState(
     val preparingPhotos: Boolean = false,
     /** Boost the new profile from the start for this many hours (0: no boost). */
     val boostHours: Int = 0,
+    /** Created with the verified badge (the admin confirmed the person matches the photos). */
+    val verified: Boolean = false,
     val creating: Boolean = false,
     /** Localization key of the last error, or null. */
     val errorKey: String? = null,
@@ -43,7 +45,7 @@ data class CreateAccountState(
     }
 }
 
-data class CreatedAccount(val name: String, val email: String, val password: String)
+data class CreatedAccount(val name: String, val email: String, val password: String, val verified: Boolean = false)
 
 data class AdminUiState(
     val stats: AdminStats? = null,
@@ -215,6 +217,8 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
 
     fun setCreateBoost(hours: Int) = updateCreate { it.copy(boostHours = hours) }
 
+    fun setCreateVerified(verified: Boolean) = updateCreate { it.copy(verified = verified) }
+
     /** Gives [user] more visibility in Discover for [hours]; 0 ends a running boost. */
     fun setBoost(user: AdminUser, hours: Int) =
         act(user.userId, if (hours > 0) "admin_done_boosted" else "admin_done_boost_ended") { it.setBoost(user.userId, hours) }
@@ -250,7 +254,7 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
         updateCreate { it.copy(creating = true, errorKey = null) }
         viewModelScope.launch {
             val error = try {
-                admin.createAccount(com.example.data.NewAccount(details, form.photos, form.boostHours))
+                admin.createAccount(com.example.data.NewAccount(details, form.photos, form.boostHours, form.verified))
                 null
             } catch (e: ModerationException) {
                 CREATE_ERRORS[e.code] ?: "create_srv_failed"
@@ -259,7 +263,7 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
             }
             updateCreate {
                 if (error == null) {
-                    it.copy(creating = false, created = CreatedAccount(details.name, details.email, details.password))
+                    it.copy(creating = false, created = CreatedAccount(details.name, details.email, details.password, form.verified))
                 } else {
                     it.copy(creating = false, errorKey = error)
                 }

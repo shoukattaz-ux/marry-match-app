@@ -36,7 +36,7 @@ const CHOICES: Record<string, string[]> = {
 
 type Photo = { jpeg?: string; thumb?: string; blurred?: string; focus_x?: number; focus_y?: number; zoom?: number };
 type CreateBody = {
-  email?: string; password?: string; lang?: string; boost_hours?: number;
+  email?: string; password?: string; lang?: string; boost_hours?: number; verified?: boolean;
   terms_version?: string; privacy_version?: string; conduct_version?: string; sensitive_version?: string;
   profile?: Record<string, unknown>; photos?: Photo[];
 };
@@ -113,6 +113,10 @@ Deno.serve(async (req: Request) => {
   // Optional Boost (admin_set_boost, migration 040): more visibility in Discover for this many hours.
   const boostHours = Number(body.boost_hours ?? 0);
   if (!Number.isInteger(boostHours) || boostHours < 0 || boostHours > 720) return fail("invalid_boost");
+  // Optional: created with the verified badge, confirmed by the admin (like a selfie approval;
+  // the database takes it away again when the main photo changes).
+  if (body.verified != null && typeof body.verified !== "boolean") return fail("bad_request");
+  const verified = body.verified === true;
 
   const row: Record<string, unknown> = {
     display_name: name, gender, looking_for: gender === "woman" ? "man" : "woman", birth_date: birth, city, region,
@@ -220,6 +224,7 @@ Deno.serve(async (req: Request) => {
         country_ok: true,
         geo_checked_at: new Date().toISOString(),
         boost_until: boostHours > 0 ? new Date(Date.now() + boostHours * 3600 * 1000).toISOString() : null,
+        selfie_verified: verified,
       }).eq("user_id", userId);
     if (statusError) throw new Error("status: " + statusError.message);
 
@@ -237,7 +242,8 @@ Deno.serve(async (req: Request) => {
 
     await admin.from("audit_log").insert({
       actor_id: actor.id, action: "account_created", target_user: userId,
-      details: { email, photos: photos.length, consent: "accepted_by_admin_on_request", located_by: "admin", boost_hours: boostHours },
+      details: { email, photos: photos.length, consent: "accepted_by_admin_on_request", located_by: "admin", boost_hours: boostHours,
+        verified, verified_by: verified ? "admin" : null },
     });
   } catch (e) {
     // Remove the half-made account so the same e-mail can be used again.

@@ -354,6 +354,27 @@ class AdminViewModelTest {
         vm.setCreateBoost(24)
         vm.createAccount(today)
         assertEquals(24, api.createdAccounts.single().boostHours)
+        assertEquals(false, api.createdAccounts.single().verified)  // not verified unless chosen
+        assertEquals(false, vm.state.value.create!!.created!!.verified)
+    }
+
+    @Test
+    fun aNewAccountCanBeCreatedVerified() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        val today = java.time.LocalDate.of(2026, 10, 30)
+        vm.openCreate()
+        assertEquals(false, vm.state.value.create!!.verified)  // off by default
+        vm.setCreateText(com.example.core.admin.AccountTemplate.TEMPLATE_EN)
+        vm.checkCreate(today)
+        vm.addCreatePhotos(List(3) { photo() })
+        vm.setCreateVerified(true)
+        vm.createAccount(today)
+        assertTrue(api.createdAccounts.single().verified)
+        assertTrue(vm.state.value.create!!.created!!.verified)
+        // The next account starts unverified again.
+        vm.createAnother()
+        assertEquals(false, vm.state.value.create!!.verified)
     }
 
     @Test

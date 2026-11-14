@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -100,7 +101,7 @@ fun CreateAccountScreen(state: CreateAccountState, lang: AppLanguage, vm: AdminV
         ) {
             val created = state.created
             if (created != null) {
-                CreatedCard(created.name, created.email, created.password, lang,
+                CreatedCard(created.name, created.email, created.password, created.verified, lang,
                     onCopy = { clipboard.setText(AnnotatedString(String.format(t("create_copy_text"), created.email, created.password))) },
                     onAnother = vm::createAnother,
                     onDone = vm::closeCreate)
@@ -193,7 +194,35 @@ fun CreateAccountScreen(state: CreateAccountState, lang: AppLanguage, vm: AdminV
                 }
             }
 
-            // 4. Create
+            // 4. Verified (optional): the blue tick from the start
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (state.verified) MaterialTheme.extendedColors.verified.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+                modifier = Modifier.fillMaxWidth().testTag("create_verified_card")
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(Icons.Default.Verified, contentDescription = null, tint = MaterialTheme.extendedColors.verified)
+                        Column(Modifier.weight(1f)) {
+                            Text(t("create_verified_title"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(t(if (state.verified) "create_verified_on" else "create_verified_off"), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.extendedColors.muted)
+                        }
+                        Switch(
+                            checked = state.verified,
+                            onCheckedChange = vm::setCreateVerified,
+                            enabled = !state.creating,
+                            modifier = Modifier.testTag("create_verified_switch")
+                        )
+                    }
+                    if (state.verified) {
+                        Text(t("create_verified_confirm"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+
+            // 5. Create
             state.errorKey?.let { key ->
                 Text(t(key), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("create_error"))
             }
@@ -312,7 +341,7 @@ private val TRAIT_FIELD = mapOf(
 )
 
 @Composable
-private fun CreatedCard(name: String, email: String, password: String, lang: AppLanguage, onCopy: () -> Unit, onAnother: () -> Unit, onDone: () -> Unit) {
+private fun CreatedCard(name: String, email: String, password: String, verified: Boolean, lang: AppLanguage, onCopy: () -> Unit, onAnother: () -> Unit, onDone: () -> Unit) {
     val t: (String) -> String = { Localization.t(it, lang) }
     var copied by remember { mutableStateOf(false) }
     Card(
@@ -325,6 +354,11 @@ private fun CreatedCard(name: String, email: String, password: String, lang: App
                 Text(String.format(t("create_done_title"), name), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
             Text(t("create_done_body"), style = MaterialTheme.typography.bodyMedium)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (verified) Icon(Icons.Default.Verified, contentDescription = null, tint = MaterialTheme.extendedColors.verified, modifier = Modifier.size(18.dp))
+                Text(t(if (verified) "create_done_verified" else "create_done_unverified"), style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.testTag("create_done_verified"))
+            }
             Text("${t("create_field_email")}: $email", fontFamily = FontFamily.Monospace)
             Text("${t("create_field_password")}: $password", fontFamily = FontFamily.Monospace)
             Button(onClick = { onCopy(); copied = true }, modifier = Modifier.fillMaxWidth().testTag("create_copy")) {
