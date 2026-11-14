@@ -310,10 +310,21 @@ fun ChatsScreen(
     onOpenChat: (MatchItem) -> Unit,
     onOpenDiscover: () -> Unit,
     modifier: Modifier = Modifier,
-    onOpenSupport: (com.example.data.SupportThreadItem) -> Unit = {}
+    onOpenSupport: (com.example.data.SupportThreadItem) -> Unit = {},
+    onOpenReport: (UserProfile) -> Unit = {}
 ) {
     val lang by repository.appLanguage.collectAsState()
     val matches by repository.matches.collectAsState()
+    // Tapping a match's photo opens their full profile (the row itself opens the chat).
+    var profileOf by remember { mutableStateOf<UserProfile?>(null) }
+    profileOf?.let { person ->
+        MatchProfileDialog(
+            repository = repository,
+            person = person,
+            onDismiss = { profileOf = null },
+            onReport = { profileOf = null; onOpenReport(person) }
+        )
+    }
     val supportThreads by repository.supportThreads.collectAsState()
     val unreadChats = matches.count { it.unread }
 
@@ -398,7 +409,8 @@ fun ChatsScreen(
                             match = match,
                             newMatchText = Localization.t("new_match_say_hello", lang),
                             lang = lang,
-                            onClick = { onOpenChat(match) }
+                            onClick = { onOpenChat(match) },
+                            onOpenProfile = { profileOf = match.matchedUser }
                         )
                     }
                 }
@@ -412,7 +424,8 @@ fun MatchRow(
     match: MatchItem,
     newMatchText: String,
     lang: AppLanguage,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onOpenProfile: (() -> Unit)? = null
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -431,6 +444,7 @@ fun MatchRow(
                 modifier = Modifier
                     .size(64.dp)
                     .clip(CircleShape)
+                    .then(if (onOpenProfile != null) Modifier.clickable(onClick = onOpenProfile).testTag("match_row_photo") else Modifier)
             ) {
                 FocusedPhoto(
                     model = match.matchedUser.photos.firstOrNull() ?: "",

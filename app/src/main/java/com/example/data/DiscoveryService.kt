@@ -99,6 +99,8 @@ interface DiscoveryApi {
     suspend fun unmatch(matchId: String)
     /** Everyone whose like is still open, newest first. */
     suspend fun receivedLikes(): List<ReceivedLike> = emptyList()
+    /** The full profile of a match (tap their photo in a chat or the Chats list), migration 048. */
+    suspend fun matchProfile(userId: String): UserProfile = throw UnsupportedOperationException()
     /** Likes someone who liked me: the match is made at once (no daily limit). */
     suspend fun likeBack(fromUserId: String, comment: String?): LikeResult = throw UnsupportedOperationException()
 }
@@ -225,6 +227,14 @@ class SupabaseDiscoveryService(
                 isNew = r.new
             )
         }
+    }
+
+    override suspend fun matchProfile(userId: String): UserProfile {
+        // Matches see the clear photos, also of members who blur them for others.
+        val card = client.postgrest.rpc("get_match_profile", buildJsonObject { put("p_user", userId) })
+            .decodeAs<CardDto>().copy(photosBlurred = false)
+        photoLinks.urls(card.photos.map { it.path })
+        return card.toUserProfile()
     }
 
     override suspend fun likeBack(fromUserId: String, comment: String?): LikeResult {

@@ -79,6 +79,15 @@ fun ChatScreen(
 ) {
     val lang by repository.appLanguage.collectAsState()
     val user by repository.currentUser.collectAsState()
+    var showProfile by remember { mutableStateOf(false) }
+    if (showProfile) {
+        MatchProfileDialog(
+            repository = repository,
+            person = match.matchedUser,
+            onDismiss = { showProfile = false },
+            onReport = { showProfile = false; onOpenReport() }
+        )
+    }
     val chatViewModel: ChatViewModel = viewModel(key = "chat_${match.id}") {
         ChatViewModel(
             match.id,
@@ -199,7 +208,12 @@ fun ChatScreen(
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        // Tap the photo or name: their full profile.
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { showProfile = true }
+                            .testTag("chat_header_profile")
                     ) {
                         Box(
                             modifier = Modifier

@@ -348,7 +348,8 @@ fun MainApp(
                                     onOpenSupport = { item ->
                                         activeSupport = item
                                         activeSubScreen = ActiveSubScreen.SUPPORT_THREAD
-                                    }
+                                    },
+                                    onOpenReport = { reportUserTarget = it }
                                 )
                             }
                             AppTab.PROFILE -> {
