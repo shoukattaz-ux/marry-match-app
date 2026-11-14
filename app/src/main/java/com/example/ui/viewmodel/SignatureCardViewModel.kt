@@ -15,8 +15,9 @@ import kotlinx.coroutines.launch
 data class SignatureCardUiState(
     val loading: Boolean = true,
     val loadFailed: Boolean = false,
+    /** For the example text ("A kind man …" / "A kind woman …"). */
     val woman: Boolean = false,
-    /** A selfie-verified woman: she may save a card and it is shown. */
+    /** A selfie-verified member: they may save a card and it is shown. */
     val unlocked: Boolean = false,
     /** What the server has; null when she has no card yet. */
     val saved: SignatureCard? = null,

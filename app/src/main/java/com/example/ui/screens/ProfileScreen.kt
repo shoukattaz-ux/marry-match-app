@@ -64,7 +64,7 @@ fun ProfileScreen(
     onOpenProfileCreation: () -> Unit = {},
     /** Opens the profile editor at a given step (e.g. the habits / interests / values steps). */
     onOpenProfileEditorAt: (Int) -> Unit = { onOpenProfileCreation() },
-    /** Opens the Signature Card editor (women only). */
+    /** Opens the Signature Card editor. */
     onOpenSignatureCard: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -76,7 +76,7 @@ fun ProfileScreen(
     // Her Signature Card (migration 043), for the entry below and the preview.
     var myCard by remember { mutableStateOf<MyCardState?>(null) }
     LaunchedEffect(user.id, user.selfieVerified) {
-        if (user.id.isNotBlank() && user.gender == "woman") {
+        if (user.id.isNotBlank()) {
             myCard = try { repository.cards?.mine() } catch (e: Exception) { null }
         }
     }
@@ -351,7 +351,7 @@ fun ProfileScreen(
                 }
             }
 
-            if (user.gender == "woman") {
+            run {
                 SignatureCardEntry(
                     lang = lang,
                     unlocked = user.selfieVerified,

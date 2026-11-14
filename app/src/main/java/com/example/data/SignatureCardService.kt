@@ -10,7 +10,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
-/** The member's own card: [unlocked] while she is a selfie-verified woman (migration 043). */
+/** The member's own card: [unlocked] while they are selfie-verified (migrations 043, 047); [woman] picks the example text. */
 @Serializable
 data class MyCardState(val woman: Boolean = false, val unlocked: Boolean = false, val card: SignatureCard? = null)
 

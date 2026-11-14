@@ -4,9 +4,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * The Signature Card a selfie-verified woman can add to her profile (migration 043): what she is
- * looking for, why she is here (1-3 tags) and her vibe (emoji + short phrase), in one of four
- * designs. The server shows it only while she is verified; [id] is what a like points at.
+ * The Signature Card a selfie-verified member can add to their profile (migrations 043, 047): what they are
+ * looking for, why they are here (1-3 tags) and their vibe (emoji + short phrase), in one of four
+ * designs. The server shows it only while they are verified; [id] is what a like points at.
  */
 @Serializable
 data class SignatureCard(
@@ -35,14 +35,12 @@ object SignatureCatalog {
         CardReason("shared_faith", "🤲", "Shared faith", "Gemeinsamer Glaube"),
         CardReason("family_first", "👨‍👩‍👧", "Family first", "Familie zuerst"),
         CardReason("serious_only", "🤝", "Serious intentions only", "Nur ernste Absichten"),
-        CardReason("friendship_first", "🌱", "Friendship first", "Erst Freundschaft"),
         CardReason("partner_for_life", "♾️", "A partner for life", "Ein Partner fürs Leben"),
         CardReason("start_family", "👶", "Ready to start a family", "Bereit für eine Familie"),
         CardReason("shared_values", "🫶", "Respect and shared values", "Respekt und gemeinsame Werte"),
         CardReason("new_chapter", "📖", "Ready for a new chapter", "Bereit für ein neues Kapitel"),
         CardReason("home_in_germany", "🏡", "Building a home in Germany", "Ein Zuhause in Deutschland"),
-        CardReason("family_blessing", "🌸", "With my family's blessing", "Mit dem Segen der Familie"),
-        CardReason("honest_talk", "💬", "Honest conversations", "Ehrliche Gespräche")
+        CardReason("family_blessing", "🌸", "With my family's blessing", "Mit dem Segen der Familie")
     )
 
     /** Must match private.card_emojis() on the server. */

@@ -24,11 +24,11 @@ import org.junit.Test
 
 /** Behaves like save_profile_card / get_my_profile_card of migration 043, in memory. */
 private class FakeCardApi(var woman: Boolean = true, var verified: Boolean = true) : SignatureCardApi {
+    // Migration 047: every selfie-verified member, men too.
     var card: SignatureCard? = null
     var saves = 0
-    override suspend fun mine() = MyCardState(woman, woman && verified, card)
+    override suspend fun mine() = MyCardState(woman, verified, card)
     override suspend fun save(card: SignatureCard): MyCardState {
-        if (!woman) throw SignatureCardException("card_women_only")
         if (!verified) throw SignatureCardException("card_needs_verification")
         SignatureCatalog.problem(card)?.let { throw SignatureCardException(it) }
         saves++
@@ -79,6 +79,14 @@ class SignatureCardTest {
     }
 
     @Test
+    fun friendshipFirstAndHonestConversationsAreGone() {
+        assertEquals(10, SignatureCatalog.REASONS.size)
+        assertNull(SignatureCatalog.reason("friendship_first"))
+        assertNull(SignatureCatalog.reason("honest_talk"))
+        assertEquals("card_bad_reasons", SignatureCatalog.problem(good.copy(reasons = listOf("honest_talk"))))
+    }
+
+    @Test
     fun arabicIsDetectedForRightToLeft() {
         assertTrue(SignatureCatalog.isArabicScript("رجل طيب"))
         assertFalse(SignatureCatalog.isArabicScript("Ein gütiger Mann"))
@@ -112,10 +120,10 @@ class SignatureCardTest {
     @Test
     fun atMostThreeReasonsAndLengthsAreCapped() {
         val vm = SignatureCardViewModel(FakeCardApi())
-        listOf("marriage_soon", "family_first", "honest_talk", "new_chapter").forEach(vm::toggleReason)
+        listOf("marriage_soon", "family_first", "new_chapter", "shared_values").forEach(vm::toggleReason)
         assertEquals(3, vm.state.value.draft.reasons.size)
         assertEquals("card_max_reasons", vm.state.value.errorKey)
-        vm.toggleReason("honest_talk")  // tapping again removes it
+        vm.toggleReason("new_chapter")  // tapping again removes it
         assertEquals(listOf("marriage_soon", "family_first"), vm.state.value.draft.reasons)
         vm.setLookingFor("x".repeat(200))
         assertEquals(SignatureCatalog.MAX_LOOKING_FOR, vm.state.value.draft.lookingFor.length)
@@ -137,13 +145,19 @@ class SignatureCardTest {
     }
 
     @Test
-    fun lockedUntilVerifiedAndClosedForMen() {
+    fun lockedUntilVerifiedForWomenAndMen() {
         val unverified = SignatureCardViewModel(FakeCardApi(verified = false))
         assertTrue(unverified.state.value.woman)
         assertFalse(unverified.state.value.unlocked)
+        // Men have the card too once verified, and are locked until then like everyone.
         val man = SignatureCardViewModel(FakeCardApi(woman = false))
         assertFalse(man.state.value.woman)
-        assertFalse(man.state.value.unlocked)
+        assertTrue(man.state.value.unlocked)
+        man.setLookingFor("A kind woman who keeps her word")
+        man.toggleReason("marriage_soon")
+        man.save()
+        assertEquals("card_saved", man.state.value.doneKey)
+        assertFalse(SignatureCardViewModel(FakeCardApi(woman = false, verified = false)).state.value.unlocked)
     }
 
     @Test

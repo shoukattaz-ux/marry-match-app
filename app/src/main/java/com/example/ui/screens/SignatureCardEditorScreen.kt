@@ -39,7 +39,7 @@ import com.example.ui.viewmodel.SignatureCardViewModel
 /**
  * Profile → Signature Card. A live preview of the real card on top, then the design, "I'm looking
  * for", "Why I'm here" (1-3 tags) and "My vibe". Locked with an explanation until she is
- * selfie-verified; men are told the card is for women.
+ * selfie-verified. For every member, men and women (migration 047).
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -78,14 +78,13 @@ fun SignatureCardEditorScreen(repository: MarryMatchRepository, onBack: () -> Un
                     Text(t("card_load_failed"), color = MaterialTheme.colorScheme.error)
                     OutlinedButton(onClick = vm::load) { Text(t("retry")) }
                 }
-                !state.woman -> LockedNote(t("card_women_only_title"), t("card_women_only_body"))
                 !state.unlocked -> {
                     // Shown so she knows what she unlocks; the saved card (if any) is hidden right now.
                     LockedNote(t("card_locked_title"), t(if (state.saved != null) "card_hidden_body" else "card_locked_body"))
                     Button(onClick = onOpenVerification, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(50.dp).testTag("card_verify")) {
                         Text(t("card_verify_now"), fontWeight = FontWeight.Bold)
                     }
-                    SignatureCardView(card = state.draft.copy(lookingFor = state.draft.lookingFor.ifBlank { t("card_example_looking_for") },
+                    SignatureCardView(card = state.draft.copy(lookingFor = state.draft.lookingFor.ifBlank { t(if (state.woman) "card_example_looking_for" else "card_example_looking_for_m") },
                         reasons = state.draft.reasons.ifEmpty { listOf("marriage_soon", "family_first") },
                         vibeEmoji = state.draft.vibeEmoji ?: "☕", vibe = state.draft.vibe ?: t("card_example_vibe")), lang = lang)
                 }
@@ -93,7 +92,7 @@ fun SignatureCardEditorScreen(repository: MarryMatchRepository, onBack: () -> Un
                     // Live preview: exactly what men will see.
                     Text(t("card_preview"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     SignatureCardView(
-                        card = state.draft.copy(lookingFor = state.draft.lookingFor.ifBlank { t("card_example_looking_for") }),
+                        card = state.draft.copy(lookingFor = state.draft.lookingFor.ifBlank { t(if (state.woman) "card_example_looking_for" else "card_example_looking_for_m") }),
                         lang = lang
                     )
 
@@ -108,7 +107,7 @@ fun SignatureCardEditorScreen(repository: MarryMatchRepository, onBack: () -> Un
                     OutlinedTextField(
                         value = state.draft.lookingFor,
                         onValueChange = vm::setLookingFor,
-                        placeholder = { Text(t("card_example_looking_for")) },
+                        placeholder = { Text(t(if (state.woman) "card_example_looking_for" else "card_example_looking_for_m")) },
                         supportingText = { Text("${state.draft.lookingFor.length} / ${SignatureCatalog.MAX_LOOKING_FOR} · ${t("card_any_language")}") },
                         minLines = 2,
                         modifier = Modifier.fillMaxWidth().testTag("card_looking_for_field")
