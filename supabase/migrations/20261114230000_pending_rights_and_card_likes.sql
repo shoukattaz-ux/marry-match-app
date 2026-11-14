@@ -22,3 +22,10 @@ grant execute on function public.delete_profile_card() to authenticated;
 revoke all on function private.signature_card(uuid) from public, anon, authenticated;
 revoke all on function private.card_unlocked(uuid) from public, anon, authenticated;
 
+
+-- Likes You (045): tighter rights for the new functions.
+revoke all on function private.member_card(uuid) from public, anon, authenticated;
+revoke all on function private.open_like(uuid, uuid) from public, anon, authenticated;
+revoke all on function private.like_listed(uuid) from public, anon, authenticated;
+revoke all on function public.get_received_likes() from public, anon;
+revoke all on function public.like_back(uuid, text) from public, anon;

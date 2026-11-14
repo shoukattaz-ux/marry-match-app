@@ -43,6 +43,7 @@ object LegalTexts {
                     "• Profile: name, gender, who you are looking for, city and Bundesland, marriage plans, children, languages, education, job, height, habits (smoking, alcohol, sport, diet, pets, daily rhythm), interests, values (personality, family ties, roles at home, where to live, willingness to move), bio, answers to questions and photos. Purpose: showing your profile to suitable members. Art. 6(1)(b) GDPR.\n" +
                     "• Religion (optional): only with your explicit consent, Art. 9(2)(a) GDPR. You can hide or delete it at any time.\n" +
                     "• Likes, matches, chat messages, blocks and reports. Purpose: the service itself and keeping members safe. Art. 6(1)(b) and (f) GDPR.\n" +
+                    "• When you like someone, they see your profile in their Likes tab, with what you liked and your comment, until they like you back or pass.\n" +
                     "• Records of your consents (which text version and when). Art. 6(1)(c) and 7(1) GDPR.",
                 "3. Location check" to
                     "MarryMatch is only for people in Germany. At sign-up your phone's location is sent once to our server, which checks whether it is inside Germany and compares it with the country of your internet connection. The coordinates are not stored; we only keep the result (inside Germany yes/no, time of the check, and whether a moderator should look at it). Legal basis: Art. 6(1)(b) and (f) GDPR.",
@@ -81,6 +82,7 @@ object LegalTexts {
                     "• Profil: Name, Geschlecht, gesuchtes Geschlecht, Stadt und Bundesland, Heiratspläne, Kinderwunsch, Sprachen, Ausbildung, Beruf, Größe, Gewohnheiten (Rauchen, Alkohol, Sport, Ernährung, Haustiere, Tagesrhythmus), Interessen, Werte (Persönlichkeit, Familienbindung, Rollen im Haushalt, Wohnort, Umzugsbereitschaft), Über-mich-Text, Antworten auf Fragen und Fotos. Zweck: Anzeige Ihres Profils für passende Mitglieder. Art. 6 Abs. 1 lit. b DSGVO.\n" +
                     "• Religion (freiwillig): nur mit Ihrer ausdrücklichen Einwilligung, Art. 9 Abs. 2 lit. a DSGVO. Sie können sie jederzeit ausblenden oder löschen.\n" +
                     "• Likes, Matches, Chatnachrichten, Blockierungen und Meldungen. Zweck: der Dienst selbst und die Sicherheit der Mitglieder. Art. 6 Abs. 1 lit. b und f DSGVO.\n" +
+                    "• Wenn Sie jemanden liken, sieht die Person Ihr Profil in ihrem Likes-Tab, mit dem, was Ihnen gefallen hat, und Ihrem Kommentar, bis sie zurück liked oder weitergeht.\n" +
                     "• Nachweise Ihrer Einwilligungen (welche Textversion und wann). Art. 6 Abs. 1 lit. c und Art. 7 Abs. 1 DSGVO.",
                 "3. Standortprüfung" to
                     "MarryMatch ist nur für Menschen in Deutschland. Bei der Registrierung wird der Standort Ihres Handys einmal an unseren Server gesendet. Dieser prüft, ob er in Deutschland liegt, und vergleicht ihn mit dem Land Ihrer Internetverbindung. Die Koordinaten werden nicht gespeichert; wir speichern nur das Ergebnis (in Deutschland ja/nein, Zeitpunkt der Prüfung und ob ein Moderator nachsehen soll). Rechtsgrundlage: Art. 6 Abs. 1 lit. b und f DSGVO.",

@@ -47,6 +47,21 @@ data class DailySet(val total: Int, val profiles: List<UserProfile>, val likesLe
 
 data class LikeResult(val matched: Boolean, val matchId: String?, val likesLeft: Int? = null)
 
+/**
+ * Someone who liked me, for the Likes You tab (migration 045): their full profile as on
+ * Discover, what they liked ("photo", "prompt", "card" or null for the whole profile), the
+ * question key when it was an answer, and their comment.
+ */
+data class ReceivedLike(
+    val profile: UserProfile,
+    val targetType: String? = null,
+    val targetId: String? = null,
+    val promptKey: String? = null,
+    val comment: String? = null,
+    val likedAt: String = "",
+    val isNew: Boolean = false
+)
+
 data class MatchSummary(
     val matchId: String,
     val matchedAt: String,
@@ -82,6 +97,10 @@ interface DiscoveryApi {
     suspend fun loadPrefs(): DiscoveryPrefs
     suspend fun savePrefs(prefs: DiscoveryPrefs)
     suspend fun unmatch(matchId: String)
+    /** Everyone whose like is still open, newest first. */
+    suspend fun receivedLikes(): List<ReceivedLike> = emptyList()
+    /** Likes someone who liked me: the match is made at once (no daily limit). */
+    suspend fun likeBack(fromUserId: String, comment: String?): LikeResult = throw UnsupportedOperationException()
 }
 
 @Serializable
@@ -121,6 +140,17 @@ private data class CardPhotoDto(val id: String, val path: String, val focus: Pho
 
 @Serializable
 private data class CardPromptDto(val id: String, val key: String, val answer: String)
+
+@Serializable
+private data class ReceivedLikeDto(
+    @SerialName("target_type") val targetType: String? = null,
+    @SerialName("target_id") val targetId: String? = null,
+    @SerialName("prompt_key") val promptKey: String? = null,
+    val comment: String? = null,
+    @SerialName("liked_at") val likedAt: String = "",
+    val new: Boolean = false,
+    val profile: CardDto? = null
+)
 
 @Serializable
 private data class LikeResultDto(val matched: Boolean = false, @SerialName("match_id") val matchId: String? = null, @SerialName("likes_left") val likesLeft: Int? = null)
@@ -179,6 +209,30 @@ class SupabaseDiscoveryService(
             put("p_comment", comment?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull)
         }).decodeAs<LikeResultDto>()
         return LikeResult(result.matched, result.matchId, result.likesLeft)
+    }
+
+    override suspend fun receivedLikes(): List<ReceivedLike> {
+        val rows = client.postgrest.rpc("get_received_likes").decodeAs<List<ReceivedLikeDto>>().filter { it.profile != null }
+        photoLinks.urls(rows.flatMap { r -> r.profile!!.let { c -> c.photos.map { c.shownPath(it.path) } } })  // one request
+        return rows.map { r ->
+            ReceivedLike(
+                profile = r.profile!!.toUserProfile(),
+                targetType = r.targetType,
+                targetId = r.targetId,
+                promptKey = r.promptKey,
+                comment = r.comment?.takeIf { it.isNotBlank() },
+                likedAt = r.likedAt,
+                isNew = r.new
+            )
+        }
+    }
+
+    override suspend fun likeBack(fromUserId: String, comment: String?): LikeResult {
+        val result = client.postgrest.rpc("like_back", buildJsonObject {
+            put("p_from", fromUserId)
+            put("p_comment", comment?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull)
+        }).decodeAs<LikeResultDto>()
+        return LikeResult(result.matched, result.matchId, null)
     }
 
     override suspend fun pass(toUserId: String) {

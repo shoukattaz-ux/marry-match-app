@@ -329,10 +329,13 @@ fun MainApp(
                                 )
                             }
                             AppTab.LIKES -> {
-                                LikesYouScreen(
-                                    repository = repository,
-                                    onOpenDiscover = { activeTab = AppTab.DISCOVER }
-                                )
+                                com.example.ui.components.ScreenViewModels(key = "likes_you") {
+                                    LikesYouScreen(
+                                        repository = repository,
+                                        onOpenDiscover = { activeTab = AppTab.DISCOVER },
+                                        onOpenReport = { reportUserTarget = it }
+                                    )
+                                }
                             }
                             AppTab.CHATS -> {
                                 ChatsScreen(

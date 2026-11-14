@@ -42,37 +42,82 @@ import com.example.ui.components.FocusedPhoto
 import com.example.ui.components.MarryPrimaryButton
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.extendedColors
+import com.example.ui.viewmodel.LikesYouViewModel
+import com.example.ui.viewmodel.LikesYouText
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
 /**
- * "Likes You" tab: only the people who like you (shown blurred until you like them back in
- * Discover). Opening the tab clears its badge; likes that arrive while it is open are seen too.
+ * "Likes You" tab (free, migration 045): everyone who liked you, newest first, with what they
+ * liked and their comment. Tap a card for the full profile; Like back makes the match at once
+ * (it does not use up the free likes), Pass removes them. Opening the tab clears its badge.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LikesYouScreen(
     repository: MarryMatchRepository,
     onOpenDiscover: () -> Unit,
+    onOpenReport: (UserProfile) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val lang by repository.appLanguage.collectAsState()
-    val likesCount by repository.receivedLikesCount.collectAsState()
+    val me by repository.currentUser.collectAsState()
     val newLikes by repository.newLikesCount.collectAsState()
+    val t: (String) -> String = { Localization.t(it, lang) }
+    val vm: LikesYouViewModel = androidx.lifecycle.viewmodel.compose.viewModel(key = "likes_you") {
+        LikesYouViewModel(
+            api = repository.discovery,
+            onMatched = { repository.onNewMatch(it) },
+            onChanged = { repository.refreshMatches() }
+        )
+    }
+    val state by vm.state.collectAsState()
+    var commentFor by remember { mutableStateOf<UserProfile?>(null) }
 
-    // Fresh count every time the tab opens, then the badge is cleared.
     LaunchedEffect(Unit) {
         repository.loadMatches()
         repository.onLikesViewed()
     }
-    // A like that arrives while this tab is on screen has been seen as well.
-    LaunchedEffect(newLikes) { if (newLikes > 0) repository.onLikesViewed() }
+    // A like that arrives while this tab is on screen: show it and count it as seen.
+    LaunchedEffect(newLikes) {
+        if (newLikes > 0) {
+            vm.load(quiet = true)
+            repository.onLikesViewed()
+        }
+    }
 
-    Scaffold(
+    state.open?.let { like ->
+        androidx.activity.compose.BackHandler(onBack = vm::close)
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(like.profile.displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+                    navigationIcon = { IconButton(onClick = vm::close) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = t("back")) } }
+                )
+            }
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                LikedWhatBanner(like, me, lang, Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                Box(Modifier.weight(1f)) {
+                    ProfileHingeCard(
+                        profile = like.profile,
+                        lang = lang,
+                        enabled = state.workingOn == null,
+                        myInterests = me.interests,
+                        onPass = { vm.pass(like.profile.id) },
+                        onLike = { vm.likeBack(like.profile.id) },
+                        onLikeTarget = { commentFor = like.profile },
+                        onReport = { onOpenReport(like.profile) }
+                    )
+                }
+            }
+        }
+    } ?: Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Default.Favorite, contentDescription = null, tint = MaterialTheme.extendedColors.accent)
-                        Text(Localization.t("likes_you", lang), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(t("likes_you"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -84,8 +129,176 @@ fun LikesYouScreen(
                 .padding(padding)
                 .testTag("likes_you_screen")
         ) {
-            LikesYouBlurredView(lang = lang, likesCount = likesCount, onOpenDiscover = onOpenDiscover)
+            when {
+                state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                state.loadFailed -> Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(t("likes_you_load_failed"), textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(onClick = { vm.load() }) { Text(t("retry")) }
+                }
+                state.likes.isEmpty() -> LikesYouEmpty(lang, onOpenDiscover)
+                else -> LazyColumn(
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize().testTag("likes_you_list")
+                ) {
+                    item {
+                        Text(
+                            LikesYouText.count(state.likes.size, lang),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(t("likes_you_hint"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted)
+                    }
+                    items(state.likes.chunked(2), key = { row -> row.first().profile.id }) { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            row.forEach { like ->
+                                LikerCard(
+                                    like = like,
+                                    me = me,
+                                    lang = lang,
+                                    working = state.workingOn == like.profile.id,
+                                    enabled = state.workingOn == null,
+                                    onOpen = { vm.open(like.profile.id) },
+                                    onLikeBack = { vm.likeBack(like.profile.id) },
+                                    onPass = { vm.pass(like.profile.id) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+            state.errorKey?.let { key ->
+                Snackbar(
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                    action = { TextButton(onClick = vm::clearError) { Text(t("close")) } }
+                ) { Text(t(key)) }
+            }
         }
+    }
+
+    // Like back with a message (the heart on a photo or answer in the full profile).
+    commentFor?.let { person ->
+        var comment by remember(person.id) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { commentFor = null },
+            title = { Text(t("likes_you_like_back_title")) },
+            text = {
+                OutlinedTextField(
+                    value = comment,
+                    onValueChange = { if (it.length <= LikesYouViewModel.MAX_COMMENT) comment = it },
+                    placeholder = { Text(t("comment_optional")) },
+                    supportingText = { Text("${comment.length}/${LikesYouViewModel.MAX_COMMENT}") },
+                    modifier = Modifier.fillMaxWidth().testTag("like_back_comment")
+                )
+            },
+            confirmButton = {
+                Button(onClick = { vm.likeBack(person.id, comment); commentFor = null }) { Text(t("likes_you_like_back")) }
+            },
+            dismissButton = { TextButton(onClick = { commentFor = null }) { Text(t("cancel")) } }
+        )
+    }
+}
+
+@Composable
+private fun LikedWhatBanner(like: com.example.data.ReceivedLike, me: UserProfile, lang: AppLanguage, modifier: Modifier = Modifier) {
+    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.extendedColors.accent.copy(alpha = 0.15f), modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(Icons.Default.Favorite, contentDescription = null, tint = MaterialTheme.extendedColors.accent, modifier = Modifier.size(16.dp))
+                Text(LikesYouText.likedWhat(like, lang), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            }
+            like.comment?.let { Text("“$it”", style = MaterialTheme.typography.bodyMedium) }
+        }
+    }
+}
+
+@Composable
+private fun LikerCard(
+    like: com.example.data.ReceivedLike,
+    me: UserProfile,
+    lang: AppLanguage,
+    working: Boolean,
+    enabled: Boolean,
+    onOpen: () -> Unit,
+    onLikeBack: () -> Unit,
+    onPass: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val p = like.profile
+    val t: (String) -> String = { Localization.t(it, lang) }
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier.clickable(onClick = onOpen).testTag("liker_card")
+    ) {
+        Box(Modifier.fillMaxWidth().height(190.dp)) {
+            FocusedPhoto(model = p.photos.firstOrNull(), focus = p.focusOf(0), contentDescription = p.displayName, modifier = Modifier.fillMaxSize())
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)), startY = 200f)))
+            if (like.isNew) {
+                Surface(shape = RoundedCornerShape(50), color = MaterialTheme.extendedColors.accent, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
+                    Text(t("likes_you_new"), color = Color.Black, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                }
+            }
+            Column(Modifier.align(Alignment.BottomStart).padding(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("${p.displayName}, ${p.age}", color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false))
+                    VerifiedBadge(selfieVerified = p.selfieVerified, phoneVerified = false, isAdmin = p.isAdmin)
+                }
+                if (p.city.isNotBlank()) Text(p.city, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+            }
+        }
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(LikesYouText.likedWhat(like, lang), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.extendedColors.accent,
+                fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            like.comment?.let {
+                Text("“$it”", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = onPass, enabled = enabled, contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.weight(1f).height(40.dp).testTag("liker_pass")
+            ) { Icon(Icons.Default.Close, contentDescription = t("pass"), modifier = Modifier.size(20.dp)) }
+            Button(
+                onClick = onLikeBack, enabled = enabled, contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.weight(1f).height(40.dp).testTag("liker_like_back")
+            ) {
+                if (working) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                else Icon(Icons.Default.Favorite, contentDescription = t("likes_you_like_back"), modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LikesYouEmpty(lang: AppLanguage, onOpenDiscover: () -> Unit) {
+    val t: (String) -> String = { Localization.t(it, lang) }
+    Column(
+        Modifier.fillMaxSize().padding(32.dp).testTag("likes_you_empty"),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Surface(shape = CircleShape, color = MaterialTheme.extendedColors.accent.copy(alpha = 0.2f), modifier = Modifier.size(64.dp)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Favorite, contentDescription = null, tint = MaterialTheme.extendedColors.accent, modifier = Modifier.size(32.dp))
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(t("likes_you_none"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(8.dp))
+        Text(t("likes_you_empty_body"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.extendedColors.muted, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = onOpenDiscover,
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.extendedColors.accent),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text(t("likes_you_browse"), color = Color.Black, fontWeight = FontWeight.Bold) }
     }
 }
 
@@ -288,104 +501,6 @@ fun MatchRow(
                         modifier = Modifier
                             .size(10.dp)
                             .background(MaterialTheme.colorScheme.primary, CircleShape)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun LikesYouBlurredView(lang: AppLanguage, likesCount: Int, onOpenDiscover: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        // Blurred simulated grid of admirers
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            repeat(3) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(180.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(180.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.secondaryContainer)
-                    )
-                }
-            }
-        }
-
-        // Foreground callout
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth(0.9f)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.extendedColors.accent.copy(alpha = 0.2f),
-                    modifier = Modifier.size(60.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Favorite, contentDescription = null, tint = MaterialTheme.extendedColors.accent, modifier = Modifier.size(32.dp))
-                    }
-                }
-
-                Text(
-                    text = if (likesCount > 0) String.format(Localization.t("likes_you_count", lang), likesCount)
-                    else Localization.t("likes_you_none", lang),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-
-                Text(
-                    text = if (lang == AppLanguage.EN)
-                        "Free users can connect when both people like each other during daily discovery. A future premium plan will reveal incoming likes directly."
-                    else
-                        "Kostenlose Nutzer matchen sofort, wenn beide sich in den täglichen Profilen liken. Ein zukünftiges Premium-Abo schaltet eingehende Likes frei.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.extendedColors.muted,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Button(
-                    onClick = onOpenDiscover,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.extendedColors.accent),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = if (lang == AppLanguage.EN) "Keep Browsing Daily Profiles" else "Tägliche Profile weiter ansehen",
-                        color = Color.Black,
-                        fontWeight = FontWeight.Bold
                     )
                 }
             }
