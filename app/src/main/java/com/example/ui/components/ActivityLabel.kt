@@ -17,7 +17,7 @@ import com.example.core.AppLanguage
 import com.example.core.Localization
 import com.example.ui.theme.extendedColors
 
-/** Online: active in the last 2 minutes. */
+/** Online: using the app, or left it less than the admin-set time ago (migration 046). */
 val OnlineGreen = Color(0xFF22C55E)
 /** Recently online: within the time admins set (20 minutes at first). */
 val RecentGreen = Color(0xFF86EFAC)

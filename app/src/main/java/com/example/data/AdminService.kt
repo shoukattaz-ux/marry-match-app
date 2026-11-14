@@ -46,8 +46,10 @@ data class AdminStats(
     @SerialName("male_signups_paused") val maleSignupsPaused: Boolean = false,
     /** Free likes per day for every account (0 = no limit), migration 041. */
     @SerialName("daily_like_limit") val dailyLikeLimit: Int = 10,
-    /** "Recently online" lasts this many minutes after the last activity (migration 042). */
-    @SerialName("recently_online_minutes") val recentlyOnlineMinutes: Int = 20
+    /** "Recently online" is shown this many minutes after "Online" ends (migrations 042, 046). */
+    @SerialName("recently_online_minutes") val recentlyOnlineMinutes: Int = 20,
+    /** Members stay "Online" this many minutes after leaving the app (migration 046). */
+    @SerialName("online_minutes") val onlineMinutes: Int = 10
 ) {
     /** Men per woman, e.g. 2.5; null while there are no women yet. */
     val menPerWoman: Double? get() = if (women > 0) men.toDouble() / women else null
@@ -127,8 +129,12 @@ interface AdminApi {
     suspend fun createAccount(account: NewAccount) {
         throw ModerationException("not_available")
     }
-    /** How long "Recently online" is shown after the last activity (3 to 1440 minutes). */
+    /** How long "Recently online" is shown after "Online" ends (3 to 1440 minutes). */
     suspend fun setRecentMinutes(minutes: Int) {
+        throw ModerationException("not_available")
+    }
+    /** How long members stay "Online" after leaving the app (1 to 240 minutes). */
+    suspend fun setOnlineMinutes(minutes: Int) {
         throw ModerationException("not_available")
     }
     /** Free likes per day for every account (0 = no limit, at most 100). */
@@ -268,6 +274,10 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
 
     override suspend fun setRecentMinutes(minutes: Int) {
         client.postgrest.rpc("admin_set_recent_minutes", buildJsonObject { put("p_minutes", minutes) })
+    }
+
+    override suspend fun setOnlineMinutes(minutes: Int) {
+        client.postgrest.rpc("admin_set_online_minutes", buildJsonObject { put("p_minutes", minutes) })
     }
 
     override suspend fun setLikeLimit(limit: Int) {

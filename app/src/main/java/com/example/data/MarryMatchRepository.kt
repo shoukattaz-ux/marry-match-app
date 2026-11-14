@@ -83,7 +83,7 @@ private data class BlockRow(val blocked: String)
 internal fun isRealUserId(id: String): Boolean =
     runCatching { UUID.fromString(id) }.isSuccess && id.length == 36
 
-/** How often the open app reports activity (status "Online" lasts 2 minutes). */
+/** How often the open app reports activity ("Online" lasts an admin-set time after the last one). */
 private const val HEARTBEAT_MS = 60_000L
 
 class MarryMatchRepository {
@@ -532,7 +532,7 @@ class MarryMatchRepository {
 
     /**
      * The app is on screen: reports activity now and then every minute (heartbeat), so others
-     * see "Online" (active in the last 2 minutes). Stopped by [onAppInactive].
+     * see "Online" (and for an admin-set time after leaving). Stopped by [onAppInactive].
      */
     fun onAppActive() {
         if (_account == null) return

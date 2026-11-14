@@ -48,7 +48,8 @@ private class FakeAdminApi : AdminApi {
         men = 30, women = 12, men7d = 5, women7d = 2,
         maleSignupsPaused = malePaused,
         dailyLikeLimit = likeLimit,
-        recentlyOnlineMinutes = recentMinutes
+        recentlyOnlineMinutes = recentMinutes,
+        onlineMinutes = onlineMinutes
     )
     override suspend fun setMaleSignupsPaused(paused: Boolean) {
         failNext?.let { failNext = null; throw it }
@@ -72,6 +73,11 @@ private class FakeAdminApi : AdminApi {
         users += AdminUser("new-${createdAccounts.size}", account.details.name, email = account.details.email, emailConfirmed = true)
     }
 
+    var onlineMinutes = 10
+    override suspend fun setOnlineMinutes(minutes: Int) {
+        if (minutes !in 1..240) throw ModerationException("bad_request")
+        onlineMinutes = minutes
+    }
     var recentMinutes = 20
     override suspend fun setRecentMinutes(minutes: Int) {
         if (minutes !in 3..1440) throw ModerationException("bad_request")
@@ -279,6 +285,21 @@ class AdminViewModelTest {
         assertEquals("", vm.state.value.create!!.text)
         vm.closeCreate()
         assertNull(vm.state.value.create)
+    }
+
+    @Test
+    fun changingHowLongMembersStayOnline() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        assertEquals(10, vm.state.value.stats?.onlineMinutes)
+        vm.setOnlineMinutes(15)
+        assertEquals(15, vm.state.value.stats?.onlineMinutes)
+        assertEquals("admin_done_online_minutes", vm.state.value.doneKey)
+        assertEquals(20, api.recentMinutes)  // the other setting is untouched
+        vm.setOnlineMinutes(0)  // kept within 1 minute to 4 hours, like the server
+        assertEquals(AdminViewModel.MIN_ONLINE_MINUTES, api.onlineMinutes)
+        vm.setOnlineMinutes(1000)
+        assertEquals(AdminViewModel.MAX_ONLINE_MINUTES, api.onlineMinutes)
     }
 
     @Test
