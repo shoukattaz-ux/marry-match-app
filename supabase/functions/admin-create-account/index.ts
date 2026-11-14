@@ -154,14 +154,30 @@ Deno.serve(async (req: Request) => {
   }
 
   // --- Create ---
+  // Auth stores app_metadata only after the sign-up trigger ran, so the trigger cannot see
+  // gate_bypass. A one-time pass (migration 044, stored with the service role only) lets
+  // handle_new_user skip the location check and the sign-up pause for this one account.
+  const passBytes = crypto.getRandomValues(new Uint8Array(32));
+  const pass = Array.from(passBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const passHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pass))),
+    (b) => b.toString(16).padStart(2, "0")).join("");
+  const { error: passError } = await admin.from("admin_signup_passes").insert({ token_hash: passHash, created_by: actor.id });
+  if (passError) {
+    console.error("admin-create-account pass", passError.message);
+    return fail("create_failed", 500);
+  }
+  const lang = body.lang === "en" ? "en" : "de";
+
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
-    user_metadata: { lang: body.lang === "en" ? "en" : "de", display_name: name },
+    user_metadata: { lang, display_name: name, admin_pass: pass },
     app_metadata: { gate_bypass: true, created_by_admin: actor.id },
   });
+  await admin.from("admin_signup_passes").delete().eq("token_hash", passHash);  // used or not, it is done
   if (createError || !created?.user) {
+    console.error("admin-create-account createUser", createError?.message);
     const msg = (createError?.message ?? "").toLowerCase();
     if (msg.includes("already") || (createError as { code?: string })?.code === "email_exists") return fail("email_exists", 409);
     if (msg.includes("password")) return fail("weak_password");
@@ -169,6 +185,8 @@ Deno.serve(async (req: Request) => {
   }
   const userId = created.user.id;
   const uploaded: string[] = [];
+  // The pass is used up; keep it out of the account's data.
+  await admin.auth.admin.updateUserById(userId, { user_metadata: { lang, display_name: name, admin_pass: null } });
 
   try {
     const { error: profileError } = await admin.from("profiles").insert({ id: userId, ...row });
