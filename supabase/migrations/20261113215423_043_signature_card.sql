@@ -1,9 +1,9 @@
 -- Signature Card: a selfie-verified woman can add a designed card to her profile with three short
 -- parts: "I'm looking for" (free text), "Why I'm here" (1-3 tags) and "My vibe" (emoji + phrase),
 -- shown in one of four templates. It is shown only while she is verified and not banned: when the
--- verification is reset (new main photo), the card is hidden, not deleted. Men can like the card
+-- verification is reset (new main photo), the card is hidden, not removed. Men can like the card
 -- (with a comment), like a photo or an answer.
--- Writes only go through save_profile_card / delete_profile_card, which check every rule.
+-- Writes only go through the card functions (part 2: 043b).
 
 create table if not exists public.profile_cards (
   id uuid not null default gen_random_uuid() unique,
@@ -18,14 +18,8 @@ create table if not exists public.profile_cards (
 );
 alter table public.profile_cards enable row level security;
 -- Owners read their own card; everyone else gets it only through get_daily_set.
-drop policy if exists "profile_cards: read own" on public.profile_cards;
 create policy "profile_cards: read own" on public.profile_cards for select to authenticated
   using (user_id = auth.uid());
-revoke insert, update, delete on public.profile_cards from anon, authenticated;
-
--- A like can now point at the card.
-alter table public.likes drop constraint if exists likes_target_type_check;
-alter table public.likes add constraint likes_target_type_check check (target_type in ('photo','prompt','card'));
 
 -- Phone numbers, e-mail addresses, links and messenger names are not allowed on the card.
 create or replace function private.has_contact_info(p text) returns boolean
@@ -129,23 +123,9 @@ begin
   return public.get_my_profile_card();
 end $$;
 
-create or replace function public.delete_profile_card() returns void
-language plpgsql security definer set search_path = public as $$
-begin
-  if auth.uid() is null then
-    raise exception 'not_signed_in';
-  end if;
-  delete from public.profile_cards where user_id = auth.uid();
-end $$;
 
-revoke all on function public.get_my_profile_card() from public, anon;
-revoke all on function public.save_profile_card(text, text, text[], text, text) from public, anon;
-revoke all on function public.delete_profile_card() from public, anon;
 grant execute on function public.get_my_profile_card() to authenticated;
 grant execute on function public.save_profile_card(text, text, text[], text, text) to authenticated;
-grant execute on function public.delete_profile_card() to authenticated;
-revoke all on function private.signature_card(uuid) from public, anon, authenticated;
-revoke all on function private.card_unlocked(uuid) from public, anon, authenticated;
 
 -- The card travels with the daily Discover set, and a like may point at it.
 do $$
