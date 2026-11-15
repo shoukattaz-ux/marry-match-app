@@ -1,5 +1,5 @@
 -- Signature Card, part 2: likes may point at the card; tighter rights; removing the card.
--- (Not applied yet: waits for the confirmation in Supabase; the file name gets the real version then.)
+-- Also the tighter rights of the functions added in 045, 046, 048 and 049.
 alter table public.likes drop constraint if exists likes_target_type_check;
 alter table public.likes add constraint likes_target_type_check check (target_type in ('photo','prompt','card'));
 revoke insert, update, delete on public.profile_cards from anon, authenticated;
@@ -29,3 +29,9 @@ revoke all on function private.open_like(uuid, uuid) from public, anon, authenti
 revoke all on function private.like_listed(uuid) from public, anon, authenticated;
 revoke all on function public.get_received_likes() from public, anon;
 revoke all on function public.like_back(uuid, text) from public, anon;
+-- Match profile (048), online time (046), silhouette (049): tighter rights as well.
+revoke all on function public.get_match_profile(uuid) from public, anon;
+grant execute on function public.get_match_profile(uuid) to authenticated;
+revoke all on function public.admin_set_online_minutes(int) from public, anon;
+grant execute on function public.admin_set_online_minutes(int) to authenticated;
+revoke all on function private.hides_photos_from_me(uuid) from public, anon, authenticated;
