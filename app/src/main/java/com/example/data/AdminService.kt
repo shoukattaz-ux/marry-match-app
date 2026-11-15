@@ -145,6 +145,13 @@ interface AdminApi {
     suspend fun setBoost(userId: String, hours: Int) {
         throw ModerationException("not_available")
     }
+    /**
+     * Deletes a banned account for good with all its data (owner only, admin-delete-account);
+     * [blockEmail] keeps its address from signing up again.
+     */
+    suspend fun deleteAccount(userId: String, blockEmail: Boolean) {
+        throw ModerationException("not_available")
+    }
     suspend fun auditLog(limit: Int = 100): List<AuditEntry>
     suspend fun moderate(action: ModerationAction, userId: String? = null, reportId: String? = null, note: String? = null)
     /** Switches the Germany location check on or off; the server allows admins only and logs it. */
@@ -285,6 +292,14 @@ class SupabaseAdminService(private val client: SupabaseClient) : AdminApi {
 
     override suspend fun setLikeLimit(limit: Int) {
         client.postgrest.rpc("admin_set_like_limit", buildJsonObject { put("p_limit", limit) })
+    }
+
+    override suspend fun deleteAccount(userId: String, blockEmail: Boolean) {
+        callFunction("admin-delete-account", buildJsonObject {
+            put("user_id", userId)
+            put("block_email", blockEmail)
+            put("confirm", true)
+        }.toString())
     }
 
     override suspend fun setBoost(userId: String, hours: Int) {

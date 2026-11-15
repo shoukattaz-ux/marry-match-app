@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -854,6 +855,7 @@ private fun ConfirmBanDialog(name: String, lang: AppLanguage, onDismiss: () -> U
 @Composable
 private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewModel, myUserId: String) {
     var confirmBan by remember { mutableStateOf<AdminUser?>(null) }
+    var confirmDelete by remember { mutableStateOf<AdminUser?>(null) }
     var confirmAdmin by remember { mutableStateOf<Pair<AdminUser, Boolean>?>(null) }
     var boostFor by remember { mutableStateOf<AdminUser?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -898,11 +900,18 @@ private fun AdminUsers(state: AdminUiState, lang: AppLanguage, vm: AdminViewMode
                 items(state.users, key = { it.userId }) { user ->
                     UserCard(user, lang, working = state.workingOn == user.userId, actionsEnabled = state.workingOn == null,
                         onBan = { confirmBan = user }, onUnban = { vm.setBanned(user, false, null) },
+                        onDelete = { confirmDelete = user },
                         onSetAdmin = { admin -> confirmAdmin = user to admin },
                         onMessage = if (user.userId != myUserId) ({ vm.messageUser(user) }) else null,
                         onBoost = { boostFor = user })
                 }
             }
+        }
+    }
+    confirmDelete?.let { user ->
+        DeleteAccountDialog(user, lang, onDismiss = { confirmDelete = null }) { blockEmail ->
+            confirmDelete = null
+            vm.deleteAccount(user, blockEmail)
         }
     }
     confirmBan?.let { user ->
@@ -943,6 +952,7 @@ private fun UserCard(
     actionsEnabled: Boolean,
     onBan: () -> Unit,
     onUnban: () -> Unit,
+    onDelete: () -> Unit = {},
     onSetAdmin: (Boolean) -> Unit,
     /** Opens this admin's conversation with the person; null on the admin's own card. */
     onMessage: (() -> Unit)?,
@@ -1031,7 +1041,20 @@ private fun UserCard(
                     Text(Localization.t("admin_remove_admin", lang), color = MaterialTheme.colorScheme.error)
                 }
                 user.isAdmin -> Unit
-                user.isBanned -> OutlinedButton(onClick = onUnban, enabled = actionsEnabled) { Text(Localization.t("admin_unban", lang)) }
+                user.isBanned -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onUnban, enabled = actionsEnabled) { Text(Localization.t("admin_unban", lang)) }
+                    // Permanently, with all data (owner only; the server checks).
+                    Button(
+                        onClick = onDelete,
+                        enabled = actionsEnabled,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.testTag("admin_delete_account")
+                    ) {
+                        Icon(Icons.Default.DeleteForever, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(Localization.t("admin_delete_account", lang))
+                    }
+                }
                 else -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = onBan,
@@ -1047,6 +1070,49 @@ private fun UserCard(
             }
         }
     }
+}
+
+/**
+ * Deleting a banned account for good: says what is removed, offers to block the address from
+ * signing up again (on by default), and asks to type DELETE / LÖSCHEN so it is never a slip.
+ */
+@Composable
+private fun DeleteAccountDialog(user: AdminUser, lang: AppLanguage, onDismiss: () -> Unit, onConfirm: (blockEmail: Boolean) -> Unit) {
+    val t: (String) -> String = { Localization.t(it, lang) }
+    var blockEmail by remember { mutableStateOf(true) }
+    var typed by remember { mutableStateOf("") }
+    val word = t("admin_delete_word")
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+        title = { Text(String.format(t("admin_delete_title"), user.displayName.ifBlank { user.email })) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(user.email, fontWeight = FontWeight.Bold)
+                Text(t("admin_delete_body"), style = MaterialTheme.typography.bodyMedium)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { blockEmail = !blockEmail }) {
+                    Checkbox(checked = blockEmail, onCheckedChange = { blockEmail = it }, modifier = Modifier.testTag("admin_delete_block_email"))
+                    Text(t("admin_delete_block_email"), style = MaterialTheme.typography.bodyMedium)
+                }
+                OutlinedTextField(
+                    value = typed,
+                    onValueChange = { typed = it },
+                    singleLine = true,
+                    label = { Text(String.format(t("admin_delete_type"), word)) },
+                    modifier = Modifier.fillMaxWidth().testTag("admin_delete_confirm_word")
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(blockEmail) },
+                enabled = typed.trim().equals(word, ignoreCase = true),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.testTag("admin_delete_confirm")
+            ) { Text(t("admin_delete_account")) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(t("cancel")) } }
+    )
 }
 
 /** "31.10. 18:00" in the phone's time zone, from a server timestamp. */

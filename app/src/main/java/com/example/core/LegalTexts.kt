@@ -69,6 +69,7 @@ object LegalTexts {
                     "We do not sell data, show no advertising and use no analytics or tracking tools.",
                 "7. How long we keep it" to
                     "• Your data is kept until you delete your account. Deleting it in the app removes your profile, photos, matches, chats, likes and consents right away.\n" +
+                    "• When we delete a banned account, we may keep a fingerprint (SHA-256 hash) of its e-mail address so the same address cannot sign up again. The address itself is not kept.\n" +
                     "• Reports you made stay without your name so moderators can finish them.\n" +
                     "• The moderation log keeps the account number and the decision (for example a ban) to prevent abuse.\n" +
                     "• Selfies are deleted after the moderator's decision.",
@@ -109,6 +110,7 @@ object LegalTexts {
                     "Wir verkaufen keine Daten, zeigen keine Werbung und nutzen keine Analyse- oder Tracking-Werkzeuge.",
                 "7. Wie lange wir Daten speichern" to
                     "• Ihre Daten bleiben gespeichert, bis Sie Ihr Konto löschen. Die Löschung in der App entfernt Profil, Fotos, Matches, Chats, Likes und Einwilligungen sofort.\n" +
+                    "• Wenn wir ein gesperrtes Konto löschen, können wir einen Fingerabdruck (SHA-256-Hash) seiner E-Mail-Adresse behalten, damit sich dieselbe Adresse nicht erneut anmelden kann. Die Adresse selbst wird nicht gespeichert.\n" +
                     "• Meldungen, die Sie gemacht haben, bleiben ohne Ihren Namen erhalten, damit Moderatoren sie abschließen können.\n" +
                     "• Das Moderationsprotokoll behält die Kontonummer und die Entscheidung (zum Beispiel eine Sperre), um Missbrauch zu verhindern.\n" +
                     "• Selfies werden nach der Entscheidung des Moderators gelöscht.",

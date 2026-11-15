@@ -219,6 +219,12 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
 
     fun setCreateVerified(verified: Boolean) = updateCreate { it.copy(verified = verified) }
 
+    /** Deletes a banned account for good, with all its data; only the owner may (the server checks). */
+    fun deleteAccount(user: AdminUser, blockEmail: Boolean) {
+        if (!user.isBanned) return
+        act(user.userId, "admin_done_deleted") { it.deleteAccount(user.userId, blockEmail) }
+    }
+
     /** Gives [user] more visibility in Discover for [hours]; 0 ends a running boost. */
     fun setBoost(user: AdminUser, hours: Int) =
         act(user.userId, if (hours > 0) "admin_done_boosted" else "admin_done_boost_ended") { it.setBoost(user.userId, hours) }
@@ -327,6 +333,9 @@ class AdminViewModel(private val api: AdminApi?, private val support: SupportApi
                     "owner_only" -> "admin_error_owner_only"
                     "email_not_confirmed" -> "admin_error_not_confirmed"
                     "user_banned" -> "admin_error_banned"
+                    "not_banned" -> "admin_error_delete_not_banned"
+                    "cannot_delete_admin" -> "admin_error_admin"
+                    "cannot_delete_self" -> "admin_error_remove_self"
                     else -> "admin_action_failed"
                 }
             } catch (e: Throwable) {

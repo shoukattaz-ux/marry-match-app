@@ -89,6 +89,16 @@ private class FakeAdminApi : AdminApi {
         likeLimit = limit
     }
     val boosts = mutableListOf<Pair<String, Int>>()
+    val deleted = mutableListOf<Pair<String, Boolean>>()
+    var ownerOnly = false
+    override suspend fun deleteAccount(userId: String, blockEmail: Boolean) {
+        if (ownerOnly) throw ModerationException("owner_only")
+        val u = users.first { it.userId == userId }
+        if (u.isAdmin) throw ModerationException("cannot_delete_admin")
+        if (!u.isBanned) throw ModerationException("not_banned")
+        deleted += userId to blockEmail
+        users.removeAll { it.userId == userId }
+    }
     override suspend fun setBoost(userId: String, hours: Int) {
         if (hours !in 0..720) throw ModerationException("invalid_hours")
         boosts += userId to hours
@@ -356,6 +366,34 @@ class AdminViewModelTest {
         assertEquals(24, api.createdAccounts.single().boostHours)
         assertEquals(false, api.createdAccounts.single().verified)  // not verified unless chosen
         assertEquals(false, vm.state.value.create!!.created!!.verified)
+    }
+
+    @Test
+    fun deleteABannedAccountForGood() {
+        val api = FakeAdminApi()
+        val vm = AdminViewModel(api)
+        vm.searchUsers()
+        val max = vm.state.value.users.first { it.userId == "bad" }
+        vm.deleteAccount(max, blockEmail = true)  // not banned yet: nothing happens
+        assertTrue(api.deleted.isEmpty())
+        vm.setBanned(max, true, "scam")
+        val banned = vm.state.value.users.first { it.userId == "bad" }
+        assertTrue(banned.isBanned)
+        vm.deleteAccount(banned, blockEmail = true)
+        assertEquals(listOf("bad" to true), api.deleted)
+        assertEquals("admin_done_deleted", vm.state.value.doneKey)
+        assertTrue(vm.state.value.users.none { it.userId == "bad" })
+    }
+
+    @Test
+    fun onlyTheOwnerMayDelete() {
+        val api = FakeAdminApi().apply { ownerOnly = true }
+        val vm = AdminViewModel(api)
+        vm.searchUsers()
+        vm.setBanned(vm.state.value.users.first { it.userId == "bad" }, true, null)
+        vm.deleteAccount(vm.state.value.users.first { it.userId == "bad" }, blockEmail = false)
+        assertEquals("admin_error_owner_only", vm.state.value.errorKey)
+        assertTrue(vm.state.value.users.any { it.userId == "bad" })
     }
 
     @Test
