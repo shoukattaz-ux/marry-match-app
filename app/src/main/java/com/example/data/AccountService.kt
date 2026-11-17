@@ -41,7 +41,9 @@ data class PrivacySettings(
 data class NotificationSettings(
     @SerialName("notify_matches") val matches: Boolean = true,
     @SerialName("notify_messages") val messages: Boolean = true,
-    @SerialName("notify_likes") val likes: Boolean = true
+    @SerialName("notify_likes") val likes: Boolean = true,
+    /** "Likes are waiting" / "Profiles for today" after a while away (migration 052). */
+    @SerialName("notify_reminders") val reminders: Boolean = true
 )
 
 /** The user's own account: privacy and push settings, device registration, export and deletion. */
@@ -93,7 +95,7 @@ class SupabaseAccountService(
 
     override suspend fun loadNotifications(): NotificationSettings =
         client.from("profiles")
-            .select(columns = Columns.list("notify_matches", "notify_messages", "notify_likes")) { filter { eq("id", currentUserId()) } }
+            .select(columns = Columns.list("notify_matches", "notify_messages", "notify_likes", "notify_reminders")) { filter { eq("id", currentUserId()) } }
             .decodeSingleOrNull<NotificationSettings>() ?: NotificationSettings()
 
     override suspend fun saveNotifications(settings: NotificationSettings) {
@@ -101,6 +103,7 @@ class SupabaseAccountService(
             put("notify_matches", settings.matches)
             put("notify_messages", settings.messages)
             put("notify_likes", settings.likes)
+            put("notify_reminders", settings.reminders)
         }) { filter { eq("id", currentUserId()) } }
     }
 

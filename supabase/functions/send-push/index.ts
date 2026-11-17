@@ -2,17 +2,20 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Sends one push through Firebase Cloud Messaging (HTTP v1).
 // Called only by database triggers (migration 013b) with the x-push-secret header, never by the
-// app. POST { user_id, kind: "match" | "message" | "like" | "your_turn" | "expiring" | "support" | "support_reply",
-// data: { match_id?, name? } } (for the two admin message kinds, match_id is the conversation id).
+// app. POST { user_id, kind: "match" | "message" | "like" | "your_turn" | "expiring" | "support" | "support_reply"
+// | "likes_waiting" | "daily_ready", data: { match_id?, name?, what?, count? } } (for the two admin message
+// kinds, match_id is the conversation id; "what" is what a like was for: photo, prompt or card).
 // The Firebase key comes from the FIREBASE_SERVICE_ACCOUNT_JSON secret and never leaves here.
 // Pushes never contain message text: only who wrote, so nothing private shows on a lock screen.
 // Tokens marked data_only (newer apps) get a data-only push: the app then shows it itself, with
 // the sound and vibration the user chose for that kind. Older apps get a notification push.
 
-type Kind = "match" | "message" | "like" | "your_turn" | "expiring" | "support" | "support_reply";
+type Kind = "match" | "message" | "like" | "your_turn" | "expiring" | "support" | "support_reply"
+  | "likes_waiting" | "daily_ready";
 type Lang = "en" | "de";
+type PushData = { match_id?: string; name?: string; what?: string; count?: number };
 
-const TEXTS: Record<Kind, Record<Lang, (name: string) => { title: string; body: string }>> = {
+const TEXTS: Record<Kind, Record<Lang, (name: string, d: PushData) => { title: string; body: string }>> = {
   match: {
     en: (n) => ({ title: "It's a match!", body: `You and ${n} like each other. Say hello!` }),
     de: (n) => ({ title: "Es ist ein Match!", body: `Sie und ${n} mögen sich. Sagen Sie Hallo!` }),
@@ -21,9 +24,37 @@ const TEXTS: Record<Kind, Record<Lang, (name: string) => { title: string; body: 
     en: (n) => ({ title: "New message", body: `${n} sent you a message.` }),
     de: (n) => ({ title: "Neue Nachricht", body: `${n} hat Ihnen geschrieben.` }),
   },
+  // Who liked you and what (migration 052); the Likes tab shows them, like back for a match.
   like: {
-    en: () => ({ title: "Someone likes you", body: "Open MarryMatch to see who." }),
-    de: () => ({ title: "Jemand mag Sie", body: "Öffnen Sie MarryMatch, um zu sehen, wer." }),
+    en: (n, d) => !d.name?.trim() ? { title: "Someone likes you", body: "Open MarryMatch to see who." } : ({
+      title: `${n} likes you`,
+      body: d.what === "photo" ? `${n} liked your photo. Like back for a match.`
+        : d.what === "prompt" ? `${n} liked one of your answers. Like back for a match.`
+        : d.what === "card" ? `${n} liked your Signature Card. Like back for a match.`
+        : `Like ${n} back and it's a match.`,
+    }),
+    de: (n, d) => !d.name?.trim() ? { title: "Jemand mag Sie", body: "Öffnen Sie MarryMatch, um zu sehen, wer." } : ({
+      title: `${n} mag Sie`,
+      body: d.what === "photo" ? `${n} gefällt Ihr Foto. Liken Sie zurück für ein Match.`
+        : d.what === "prompt" ? `${n} gefällt eine Ihrer Antworten. Liken Sie zurück für ein Match.`
+        : d.what === "card" ? `${n} gefällt Ihre Signatur-Karte. Liken Sie zurück für ein Match.`
+        : `Liken Sie ${n} zurück und es ist ein Match.`,
+    }),
+  },
+  // Reminders for members who have been away (migration 052), "Reminders" in the settings.
+  likes_waiting: {
+    en: (_n, d) => ({
+      title: (d.count ?? 1) === 1 ? "1 person likes you" : `${d.count} people like you`,
+      body: "See who in the Likes tab and like back for a match.",
+    }),
+    de: (_n, d) => ({
+      title: (d.count ?? 1) === 1 ? "1 Person mag Sie" : `${d.count} Personen mögen Sie`,
+      body: "Sehen Sie im Likes-Tab, wer es ist, und liken Sie zurück für ein Match.",
+    }),
+  },
+  daily_ready: {
+    en: () => ({ title: "Your profiles for today are ready", body: "New people are waiting for you in Discover." }),
+    de: () => ({ title: "Ihre Profile für heute sind da", body: "Neue Menschen warten in Discover auf Sie." }),
   },
   // Daily reminders (migration 017).
   your_turn: {
@@ -114,7 +145,7 @@ Deno.serve(async (req: Request) => {
   try { sa = JSON.parse(raw); } catch { return json({ error: "push_secret_not_json" }, 503); }
   if (!sa?.client_email || !sa?.private_key || !sa?.project_id) return json({ error: "push_secret_incomplete" }, 503);
 
-  let body: { user_id?: string; kind?: Kind; data?: { match_id?: string; name?: string } };
+  let body: { user_id?: string; kind?: Kind; data?: PushData };
   try { body = await req.json(); } catch { return json({ error: "bad_request" }, 400); }
   const kind = body.kind;
   if (!body.user_id || !kind || !(kind in TEXTS)) return json({ error: "bad_request" }, 400);
@@ -130,7 +161,7 @@ Deno.serve(async (req: Request) => {
   for (const t of tokens) {
     const lang: Lang = t.lang === "de" ? "de" : "en";
     const name = (body.data?.name ?? "").trim() || SOMEONE[lang];
-    const { title, body: text } = TEXTS[kind][lang](name);
+    const { title, body: text } = TEXTS[kind][lang](name, body.data ?? {});
     const res = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },

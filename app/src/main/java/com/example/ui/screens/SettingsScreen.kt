@@ -194,6 +194,12 @@ fun SettingsScreen(
                         onCheckedChange = { on -> changeNotifications { it.copy(likes = on) } }
                     )
                     HorizontalDivider()
+                    NotificationToggleRow(
+                        title = Localization.t("notify_reminders", lang),
+                        checked = notifications.reminders,
+                        onCheckedChange = { on -> changeNotifications { it.copy(reminders = on) } }
+                    )
+                    HorizontalDivider()
                     SettingNavRow(
                         icon = Icons.Default.MusicNote,
                         title = Localization.t("notify_sound_title", lang),
