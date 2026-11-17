@@ -68,13 +68,14 @@ object AppConfig {
     // Operator details for the Impressum and the privacy policy. German law requires the real
     // name and a postal address before the app is published; the app shows a warning until
     // LEGAL_DETAILS_COMPLETE is true. Never put invented company data here.
-    const val LEGAL_OPERATOR_NAME = "[Name of the operator / company]"
-    const val LEGAL_ADDRESS = "[Street and number, postcode and city, Germany]"
-    const val LEGAL_EMAIL = "[contact email]"
-    const val LEGAL_PHONE = "[phone number]"
-    const val LEGAL_REPRESENTATIVE = "[name of the responsible person]"
-    const val LEGAL_REGISTER = "[commercial register and number, if any]"
-    const val LEGAL_VAT_ID = "[VAT ID, if any]"
+    const val LEGAL_OPERATOR_NAME = "Babar Ali Khan"
+    const val LEGAL_ADDRESS = "[Street and building, area, Dubai, United Arab Emirates]"
+    const val LEGAL_EMAIL = "babaralikhan5551@gmail.com"
+    const val LEGAL_PHONE = "+971 52 651 3092"
+    const val LEGAL_REPRESENTATIVE = "Babar Ali Khan"
+    // Private person: no commercial register and no VAT ID; these lines are left out (empty).
+    const val LEGAL_REGISTER = ""
+    const val LEGAL_VAT_ID = ""
     const val LEGAL_DETAILS_COMPLETE = false
     // Set to true once a lawyer has reviewed the privacy policy and terms (LegalTexts.kt).
     const val LEGAL_TEXTS_REVIEWED = false

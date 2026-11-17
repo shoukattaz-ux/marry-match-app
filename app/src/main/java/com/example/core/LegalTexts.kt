@@ -15,10 +15,17 @@ object LegalTexts {
     private val operator: String
         get() = listOf(AppConfig.LEGAL_OPERATOR_NAME, AppConfig.LEGAL_ADDRESS, AppConfig.LEGAL_EMAIL).joinToString("\n")
 
-    fun impressum(lang: AppLanguage): List<Pair<String, String>> = if (lang == AppLanguage.DE) listOf(
+    /** "Represented by" only for a company (a private person represents themselves). */
+    private val representedBy: String
+        get() = AppConfig.LEGAL_REPRESENTATIVE.takeIf { it != AppConfig.LEGAL_OPERATOR_NAME }.orEmpty()
+
+    /** Lines that do not apply (no register, no VAT ID, no representative) are left out. */
+    fun impressum(lang: AppLanguage): List<Pair<String, String>> = impressumAll(lang).filter { it.second.isNotBlank() }
+
+    private fun impressumAll(lang: AppLanguage): List<Pair<String, String>> = if (lang == AppLanguage.DE) listOf(
         "Angaben gemäß § 5 DDG" to listOf(AppConfig.LEGAL_OPERATOR_NAME, AppConfig.LEGAL_ADDRESS).joinToString("\n"),
         "Kontakt" to "E-Mail: ${AppConfig.LEGAL_EMAIL}\nTelefon: ${AppConfig.LEGAL_PHONE}",
-        "Vertreten durch" to AppConfig.LEGAL_REPRESENTATIVE,
+        "Vertreten durch" to representedBy,
         "Registereintrag" to AppConfig.LEGAL_REGISTER,
         "Umsatzsteuer-ID" to AppConfig.LEGAL_VAT_ID,
         "Verantwortlich für den Inhalt (§ 18 Abs. 2 MStV)" to AppConfig.LEGAL_REPRESENTATIVE,
@@ -26,7 +33,7 @@ object LegalTexts {
     ) else listOf(
         "Information according to § 5 DDG" to listOf(AppConfig.LEGAL_OPERATOR_NAME, AppConfig.LEGAL_ADDRESS).joinToString("\n"),
         "Contact" to "Email: ${AppConfig.LEGAL_EMAIL}\nPhone: ${AppConfig.LEGAL_PHONE}",
-        "Represented by" to AppConfig.LEGAL_REPRESENTATIVE,
+        "Represented by" to representedBy,
         "Register entry" to AppConfig.LEGAL_REGISTER,
         "VAT ID" to AppConfig.LEGAL_VAT_ID,
         "Responsible for content (§ 18 (2) MStV)" to AppConfig.LEGAL_REPRESENTATIVE,
